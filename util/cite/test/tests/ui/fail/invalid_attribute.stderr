@@ -1,0 +1,13 @@
+error: Unknown citation attribute: invalid_attr
+ --> tests/ui/fail/invalid_attribute.rs:5:37
+  |
+5 | #[cite(MockSource::same("content"), invalid_attr = "value")]  // Should fail
+  |                                     ^^^^^^^^^^^^
+
+warning: unused import: `mock::MockSource`
+ --> tests/ui/fail/invalid_attribute.rs:3:23
+  |
+3 | use cite_util::{cite, mock::MockSource};
+  |                       ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default

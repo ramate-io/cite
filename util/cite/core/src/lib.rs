@@ -1,3 +1,8 @@
+pub mod mock;
+pub mod behavior;
+
+pub use behavior::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
+
 /// Errors thrown by the [Source].
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
@@ -66,10 +71,65 @@ impl <R, C, D> Comparison<R, C, D> where R: Referenced, C: Current<R, D>, D: Dif
     pub fn is_same(&self) -> bool {
         self.diff.is_empty()
     }
+    
+    /// Validate this comparison against behavior configuration
+    pub fn validate(&self, behavior: &CitationBehavior, local_level: Option<CitationLevel>) -> CitationValidationResult {
+        if self.is_same() {
+            CitationValidationResult::Valid
+        } else {
+            let effective_level = behavior.effective_level(local_level);
+            CitationValidationResult::Invalid {
+                level: effective_level,
+                should_fail_compilation: behavior.should_fail_compilation(local_level),
+                should_report: behavior.should_report(local_level),
+            }
+        }
+    }
 }
 
-// ==============================================================================
-// Mock implementations for testing
-// ==============================================================================
+/// Result of citation validation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CitationValidationResult {
+    /// Citation is valid (content matches)
+    Valid,
+    /// Citation is invalid (content has changed)
+    Invalid {
+        /// Effective reporting level
+        level: CitationLevel,
+        /// Whether this should fail compilation
+        should_fail_compilation: bool,
+        /// Whether this should be reported
+        should_report: bool,
+    },
+}
 
-pub mod mock;
+impl CitationValidationResult {
+    /// Check if validation passed
+    pub fn is_valid(&self) -> bool {
+        matches!(self, CitationValidationResult::Valid)
+    }
+    
+    /// Check if this result should fail compilation
+    pub fn should_fail_compilation(&self) -> bool {
+        match self {
+            CitationValidationResult::Valid => false,
+            CitationValidationResult::Invalid { should_fail_compilation, .. } => *should_fail_compilation,
+        }
+    }
+    
+    /// Check if this result should be reported
+    pub fn should_report(&self) -> bool {
+        match self {
+            CitationValidationResult::Valid => false,
+            CitationValidationResult::Invalid { should_report, .. } => *should_report,
+        }
+    }
+    
+    /// Get the reporting level if invalid
+    pub fn level(&self) -> Option<CitationLevel> {
+        match self {
+            CitationValidationResult::Valid => None,
+            CitationValidationResult::Invalid { level, .. } => Some(*level),
+        }
+    }
+}

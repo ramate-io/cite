@@ -1,0 +1,13 @@
+error: cite attribute can only be applied to functions, structs, traits, or impl blocks
+ --> tests/ui/fail/wrong_target.rs:6:1
+  |
+6 | mod test_module {}
+  | ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `mock::MockSource`
+ --> tests/ui/fail/wrong_target.rs:3:23
+  |
+3 | use cite_util::{cite, mock::MockSource};
+  |                       ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default

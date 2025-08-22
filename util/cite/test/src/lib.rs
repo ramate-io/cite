@@ -87,4 +87,69 @@ pub mod tests {
         let changed_comparison = changed_source.get().expect("Should get comparison");
         assert!(!changed_comparison.is_same());
     }
+
+    #[test]
+    fn test_behavior_integration() {
+        use cite_util::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
+        
+        // Test with lenient global behavior
+        let behavior = CitationBehavior::new(
+            CitationLevel::Warn,
+            CitationAnnotation::Any,
+            CitationGlobal::Lenient,
+        );
+        
+        // Valid citation should pass
+        let valid_source = MockSource::same("content");
+        let valid_comparison = valid_source.get().expect("Should get comparison");
+        let valid_result = valid_comparison.validate(&behavior, None);
+        assert!(valid_result.is_valid());
+        assert!(!valid_result.should_fail_compilation());
+        assert!(!valid_result.should_report());
+        
+        // Invalid citation with default level (warn) should report but not fail
+        let invalid_source = MockSource::changed("old", "new");
+        let invalid_comparison = invalid_source.get().expect("Should get comparison");
+        let invalid_result = invalid_comparison.validate(&behavior, None);
+        assert!(!invalid_result.is_valid());
+        assert!(!invalid_result.should_fail_compilation());
+        assert!(invalid_result.should_report());
+        assert_eq!(invalid_result.level(), Some(CitationLevel::Warn));
+        
+        // Invalid citation with local error level should fail compilation
+        let error_result = invalid_comparison.validate(&behavior, Some(CitationLevel::Error));
+        assert!(!error_result.is_valid());
+        assert!(error_result.should_fail_compilation());
+        assert!(error_result.should_report());
+        assert_eq!(error_result.level(), Some(CitationLevel::Error));
+        
+        // Invalid citation with local silent level should not report
+        let silent_result = invalid_comparison.validate(&behavior, Some(CitationLevel::Silent));
+        assert!(!silent_result.is_valid());
+        assert!(!silent_result.should_fail_compilation());
+        assert!(!silent_result.should_report());
+        assert_eq!(silent_result.level(), Some(CitationLevel::Silent));
+    }
+    
+    #[test]
+    fn test_strict_global_behavior() {
+        use cite_util::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
+        
+        // Test with strict global behavior
+        let behavior = CitationBehavior::new(
+            CitationLevel::Error,
+            CitationAnnotation::Any,
+            CitationGlobal::Strict,
+        );
+        
+        let invalid_source = MockSource::changed("old", "new");
+        let invalid_comparison = invalid_source.get().expect("Should get comparison");
+        
+        // In strict mode, local overrides should be ignored
+        let result_with_local_override = invalid_comparison.validate(&behavior, Some(CitationLevel::Silent));
+        assert!(!result_with_local_override.is_valid());
+        assert!(result_with_local_override.should_fail_compilation()); // Should use global Error level
+        assert!(result_with_local_override.should_report());
+        assert_eq!(result_with_local_override.level(), Some(CitationLevel::Error));
+    }
 }
