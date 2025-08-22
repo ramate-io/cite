@@ -42,3 +42,15 @@ fn test_wrong_target_fails() {
     let t = trybuild::TestCases::new();
     t.compile_fail("tests/ui/fail/wrong_target.rs");
 }
+
+#[test]
+fn test_mock_diff_display_compiles() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/pass/mock_diff_display.rs");
+}
+
+#[test]
+fn test_behavior_demonstration_compiles() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/pass/behavior_demonstration.rs");
+}
