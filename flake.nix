@@ -25,13 +25,9 @@
 
         # An LLVM build environment
         dependencies = with pkgs; [
-          wasm-bindgen-cli
-          dioxus-cli
           protobuf
           grpcurl
           grpcui
-          yarn
-          nodejs
           ltex-ls-plus
           lychee
           chafa
@@ -166,8 +162,8 @@
               # chafa --size 30x30 --animate false --colors 8 --center true ./assets/ramate-transparent.png
 
               echo ""
-              echo "Roadline"
-              echo "Create roadmaps from Markdown."
+              echo "Cite"
+              echo "Cite is a tool for making and checking references from code."
             '';
           };
         };
