@@ -240,6 +240,7 @@ fn handle_mod_citation(citation: Citation, item_mod: ItemMod) -> proc_macro2::To
 fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
     // Do actual validation during macro expansion
     let validation_result = perform_compile_time_validation(citation);
+    let source_expr = &citation.source_expr;
     
     let reason_comment = if let Some(_reason) = &citation.reason {
         quote! {
@@ -249,6 +250,13 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
         quote! {}
     };
     
+    // Generate a unique function name to ensure the source import is used
+    let use_source_fn_name = syn::Ident::new(
+        &format!("_cite_use_source_{}", 
+                 std::ptr::addr_of!(*citation) as usize),
+        proc_macro2::Span::call_site()
+    );
+    
     // Generate the appropriate compile-time message based on validation result
     match validation_result {
         Ok(None) => {
@@ -257,6 +265,12 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
                 #reason_comment
                 // Citation validation passed
                 const _: () = ();
+                
+                // Include source to avoid unused import warnings
+                #[allow(dead_code)]
+                fn #use_source_fn_name() {
+                    let _source = #source_expr;
+                }
             }
         }
         Ok(Some(warning_msg)) => {
@@ -268,12 +282,26 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
                     const _WARNING: &str = #warning_msg;
                     ()
                 };
+                
+                // Include source to avoid unused import warnings
+                #[allow(dead_code)]
+                fn #use_source_fn_name() {
+                    let _source = #source_expr;
+                }
             }
         }
         Err(error_msg) => {
             // Validation failed and should error
-            let error = syn::Error::new(proc_macro2::Span::call_site(), error_msg);
-            error.to_compile_error()
+            let error_tokens = syn::Error::new(proc_macro2::Span::call_site(), error_msg).to_compile_error();
+            quote! {
+                #error_tokens
+                
+                // Include source to avoid unused import warnings even when erroring
+                #[allow(dead_code)]
+                fn #use_source_fn_name() {
+                    let _source = #source_expr;
+                }
+            }
         }
     }
 }

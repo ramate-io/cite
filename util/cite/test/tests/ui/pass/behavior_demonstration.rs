@@ -13,9 +13,9 @@ fn function_with_warn_level() {
     // This would report as warning if content changed
 }
 
-#[cite(MockSource::changed("old", "new"), level = "ERROR")]
+#[cite(MockSource::same("content"), level = "ERROR")]
 fn function_with_error_level() {
-    // This would fail compilation if content changed (when environment supports it)
+    // This would fail compilation if content changed, but this content matches
 }
 
 // Test with multiple attributes
