@@ -44,11 +44,21 @@ dependencies = [
 name = "cite-util-macro"
 version = "0.0.1"
 dependencies = [
+ "cite-util-core",
  "proc-macro2",
  "quote",
  "serde",
  "syn",
  "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "cite-util-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite-util",
  "thiserror",
 ]
 

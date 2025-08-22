@@ -67,3 +67,9 @@ impl <R, C, D> Comparison<R, C, D> where R: Referenced, C: Current<R, D>, D: Dif
         self.diff.is_empty()
     }
 }
+
+// ==============================================================================
+// Mock implementations for testing
+// ==============================================================================
+
+pub mod mock;

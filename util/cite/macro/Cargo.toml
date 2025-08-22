@@ -18,6 +18,7 @@ quote = { workspace = true }
 proc-macro2 = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+cite-util-core = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
