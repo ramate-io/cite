@@ -62,4 +62,8 @@ impl <R, C, D> Comparison<R, C, D> where R: Referenced, C: Current<R, D>, D: Dif
     pub fn diff(&self) -> &D {
         &self.diff
     }
+
+    pub fn is_same(&self) -> bool {
+        self.diff.is_empty()
+    }
 }
