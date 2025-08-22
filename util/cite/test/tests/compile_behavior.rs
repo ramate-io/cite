@@ -54,3 +54,21 @@ fn test_behavior_demonstration_compiles() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/pass/behavior_demonstration.rs");
 }
+
+#[test]
+fn test_module_citation_compiles() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/pass/module_citation.rs");
+}
+
+#[test]
+fn test_changed_content_error_fails() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/ui/fail/changed_content_error.rs");
+}
+
+#[test]
+fn test_changed_content_silent_compiles() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/pass/changed_content_silent.rs");
+}

@@ -1,8 +1,8 @@
-error: cite attribute can only be applied to functions, structs, traits, or impl blocks
- --> tests/ui/fail/wrong_target.rs:6:1
+error: cite attribute can only be applied to functions, structs, traits, impl blocks, or modules
+ --> tests/ui/fail/wrong_target.rs:7:1
   |
-6 | mod test_module {}
-  | ^^^^^^^^^^^^^^^^^^
+7 | const INVALID_TARGET: i32 = 42;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: unused import: `mock::MockSource`
  --> tests/ui/fail/wrong_target.rs:3:23

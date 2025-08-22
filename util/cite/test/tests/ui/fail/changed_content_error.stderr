@@ -1,0 +1,17 @@
+error: Citation content has changed!
+         Referenced: old content
+         Current: new content
+ --> tests/ui/fail/changed_content_error.rs:5:1
+  |
+5 | #[cite(MockSource::changed("old content", "new content"), level = "ERROR")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused import: `mock::MockSource`
+ --> tests/ui/fail/changed_content_error.rs:3:23
+  |
+3 | use cite_util::{cite, mock::MockSource};
+  |                       ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default

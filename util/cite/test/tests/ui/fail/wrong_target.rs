@@ -1,8 +1,9 @@
-// Test that citations on invalid targets fail to compile
+// Test that citations on truly invalid targets fail to compile
 
 use cite_util::{cite, mock::MockSource};
 
-#[cite(MockSource::same("content"))]  // Should fail - can't cite a module
-mod test_module {}
+// This should fail - can't cite a const item
+#[cite(MockSource::same("content"))]
+const INVALID_TARGET: i32 = 42;
 
 fn main() {}
