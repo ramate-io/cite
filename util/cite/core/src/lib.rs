@@ -10,6 +10,8 @@ pub enum SourceError {
 /// TODO: we need to standardize a diff output format, s.t., we can add a method to the [Source] trait.
 pub trait Diff {
     
+    fn is_empty(&self) -> bool;
+
 }
 
 
