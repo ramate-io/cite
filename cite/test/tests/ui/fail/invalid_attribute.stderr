@@ -1,13 +1,5 @@
 error: Unknown citation attribute: invalid_attr
- --> tests/ui/fail/invalid_attribute.rs:5:33
+ --> tests/ui/fail/invalid_attribute.rs:5:32
   |
-5 | #[cite(mock!(same!("content")), invalid_attr = "value")]  // Should fail
-  |                                 ^^^^^^^^^^^^
-
-warning: unused imports: `mock` and `same`
- --> tests/ui/fail/invalid_attribute.rs:3:18
-  |
-3 | use cite::{cite, mock, same};
-  |                  ^^^^  ^^^^
-  |
-  = note: `#[warn(unused_imports)]` on by default
+5 | #[cite(mock, same = "content", invalid_attr = "value")]  // Should fail
+  |                                ^^^^^^^^^^^^

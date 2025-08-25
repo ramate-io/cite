@@ -3,11 +3,3 @@ error: cite attribute can only be applied to functions, structs, traits, impl bl
   |
 7 | const INVALID_TARGET: i32 = 42;
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-warning: unused imports: `mock` and `same`
- --> tests/ui/fail/wrong_target.rs:3:18
-  |
-3 | use cite::{cite, mock, same};
-  |                  ^^^^  ^^^^
-  |
-  = note: `#[warn(unused_imports)]` on by default
