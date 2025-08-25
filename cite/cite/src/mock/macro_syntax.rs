@@ -1,29 +1,40 @@
 use syn::{Expr, Lit};
 use cite_core::mock::MockSource;
 
-/// Parse the macro-style syntax: mock(changed("a", "b")) and mock(same("content"))
+/// Parse the keyword argument syntax for mock sources
 /// 
-/// This syntax provides a more concise, macro-like DSL for specifying mock sources
-/// within citation attributes.
-pub fn try_parse(expr: &Expr) -> Option<MockSource> {
-    if let Expr::Call(call_expr) = expr {
-        if let Expr::Path(path_expr) = &*call_expr.func {
-            let path_str = quote::quote!(#path_expr).to_string();
-            
-            // Handle mock(...)
-            if path_str == "mock" && call_expr.args.len() == 1 {
-                if let Expr::Call(inner_call) = &call_expr.args[0] {
-                    if let Expr::Path(inner_path) = &*inner_call.func {
-                        let inner_path_str = quote::quote!(#inner_path).to_string();
-                        
-                        // Handle mock(changed("a", "b"))
-                        if inner_path_str == "changed" && inner_call.args.len() == 2 {
-                            return parse_changed_args(&inner_call.args);
-                        }
-                        
-                        // Handle mock(same("content"))
-                        if inner_path_str == "same" && inner_call.args.len() == 1 {
-                            return parse_same_args(&inner_call.args);
+/// Supports syntax like:
+/// - `mock, same = "content"`
+/// - `mock, changed = ("old", "new")`
+pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<MockSource> {
+    // Look for pattern: mock, same = "content" or mock, changed = ("old", "new")
+    if args.is_empty() {
+        return None;
+    }
+    
+    // First argument should be the identifier "mock"
+    if let Expr::Path(path_expr) = &args[0] {
+        if path_expr.path.segments.len() == 1 && path_expr.path.segments[0].ident == "mock" {
+            // Look through remaining arguments for assignments
+            for arg in &args[1..] {
+                if let Expr::Assign(assign_expr) = arg {
+                    if let Expr::Path(left_path) = &*assign_expr.left {
+                        if left_path.path.segments.len() == 1 {
+                            let name = &left_path.path.segments[0].ident;
+                            
+                            match name.to_string().as_str() {
+                                "same" => {
+                                    if let Some(content) = extract_string_literal(&assign_expr.right) {
+                                        return Some(MockSource::same(content));
+                                    }
+                                }
+                                "changed" => {
+                                    if let Some((old, new)) = extract_string_tuple(&assign_expr.right) {
+                                        return Some(MockSource::changed(old, new));
+                                    }
+                                }
+                                _ => continue,
+                            }
                         }
                     }
                 }
@@ -34,22 +45,23 @@ pub fn try_parse(expr: &Expr) -> Option<MockSource> {
     None
 }
 
-/// Parse arguments for mock(changed("referenced", "current"))
-fn parse_changed_args(args: &syn::punctuated::Punctuated<Expr, syn::Token![,]>) -> Option<MockSource> {
-    let args: Vec<_> = args.iter().collect();
-    if let (Expr::Lit(lit1), Expr::Lit(lit2)) = (args[0], args[1]) {
-        if let (Lit::Str(str1), Lit::Str(str2)) = (&lit1.lit, &lit2.lit) {
-            return Some(MockSource::changed(str1.value(), str2.value()));
+/// Extract a string literal from an expression
+fn extract_string_literal(expr: &Expr) -> Option<String> {
+    if let Expr::Lit(lit_expr) = expr {
+        if let Lit::Str(str_lit) = &lit_expr.lit {
+            return Some(str_lit.value());
         }
     }
     None
 }
 
-/// Parse arguments for mock(same("content"))
-fn parse_same_args(args: &syn::punctuated::Punctuated<Expr, syn::Token![,]>) -> Option<MockSource> {
-    if let Expr::Lit(lit) = &args[0] {
-        if let Lit::Str(str_lit) = &lit.lit {
-            return Some(MockSource::same(str_lit.value()));
+/// Extract a tuple of two string literals from an expression
+fn extract_string_tuple(expr: &Expr) -> Option<(String, String)> {
+    if let Expr::Tuple(tuple_expr) = expr {
+        if tuple_expr.elems.len() == 2 {
+            let first = extract_string_literal(&tuple_expr.elems[0])?;
+            let second = extract_string_literal(&tuple_expr.elems[1])?;
+            return Some((first, second));
         }
     }
     None

@@ -1,8 +1,8 @@
-// Test that mock(changed()) with ERROR level fails compilation
+// Test that mock keyword syntax with ERROR level fails compilation
 
-use cite::{cite, mock, changed};
+use cite::cite;
 
-#[cite(mock(changed("old content", "new content")), level = "ERROR")]
+#[cite(mock, changed = ("old content", "new content"), level = "ERROR")]
 fn function_that_should_fail_compilation() {
     println!("This should fail to compile due to citation validation");
 }

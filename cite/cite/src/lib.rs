@@ -8,16 +8,11 @@ mod mock;
 
 /// The main `#[cite]` attribute macro
 /// 
-/// Supports struct reconstruction syntax like:
-/// - `#[cite(MockSource::same("content"))]`
-/// - `#[cite(MockSource::same("content"), reason = "why this is important")]`
-/// - `#[cite(MockSource::same("content"), level = "WARN", annotation = "ANY")]`
-/// 
-/// Supports macro-style syntax like:
-/// - `#[cite(mock(same("content")))]`
-/// - `#[cite(mock(changed("a", "b")))]`
-/// - `#[cite(mock(same("content"), reason = "why this is important"))]`
-/// - `#[cite(mock(changed("a", "b"), level = "WARN", annotation = "ANY"))]`
+/// Supports keyword argument syntax like:
+/// - `#[cite(mock, same = "content")]`
+/// - `#[cite(mock, changed = ("old", "new"))]`
+/// - `#[cite(mock, same = "content", reason = "why this is important")]`
+/// - `#[cite(mock, changed = ("old", "new"), level = "ERROR", annotation = "ANY")]`
 #[proc_macro_attribute]
 pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
     // Parse as a list of expressions separated by commas
@@ -67,6 +62,8 @@ struct Citation {
     reason: Option<String>,
     level: Option<String>,
     annotation: Option<String>,
+    // For keyword syntax, store the raw arguments
+    raw_args: Option<Vec<Expr>>,
 }
 
 /// Parse the citation arguments from expressions
@@ -78,12 +75,111 @@ fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<C
         ));
     }
     
+    let args_vec: Vec<_> = args.into_iter().collect();
+    
+    // Check if this uses the new keyword syntax starting with "mock"
+    if let Some(first_arg) = args_vec.first() {
+        if let Expr::Path(path_expr) = first_arg {
+            if path_expr.path.segments.len() == 1 && path_expr.path.segments[0].ident == "mock" {
+                return parse_mock_keyword_syntax(args_vec);
+            }
+        }
+    }
+    
+    // Fall back to the old single source expression syntax
+    parse_single_source_syntax(args_vec)
+}
+
+/// Parse the new mock keyword syntax: mock, same = "content", level = "ERROR"
+fn parse_mock_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
+    let mut reason = None;
+    let mut level = None;
+    let mut annotation = None;
+    let mut mock_source_found = false;
+    
+    // Parse all arguments, looking for mock source specification and other attributes
+    for arg in &args {
+        if let Expr::Assign(assign_expr) = arg {
+            if let Expr::Path(left_path) = &*assign_expr.left {
+                if left_path.path.segments.len() == 1 {
+                    let name = &left_path.path.segments[0].ident.to_string();
+                    
+                    match name.as_str() {
+                        "same" | "changed" => {
+                            // These are handled by the mock source parser
+                            mock_source_found = true;
+                        }
+                        "reason" => {
+                            if let Expr::Lit(expr_lit) = &*assign_expr.right {
+                                if let Lit::Str(lit_str) = &expr_lit.lit {
+                                    reason = Some(lit_str.value());
+                                } else {
+                                    return Err(syn::Error::new_spanned(&assign_expr.right, "reason must be a string literal"));
+                                }
+                            } else {
+                                return Err(syn::Error::new_spanned(&assign_expr.right, "reason must be a string literal"));
+                            }
+                        }
+                        "level" => {
+                            if let Expr::Lit(expr_lit) = &*assign_expr.right {
+                                if let Lit::Str(lit_str) = &expr_lit.lit {
+                                    level = Some(lit_str.value());
+                                } else {
+                                    return Err(syn::Error::new_spanned(&assign_expr.right, "level must be a string literal"));
+                                }
+                            } else {
+                                return Err(syn::Error::new_spanned(&assign_expr.right, "level must be a string literal"));
+                            }
+                        }
+                        "annotation" => {
+                            if let Expr::Lit(expr_lit) = &*assign_expr.right {
+                                if let Lit::Str(lit_str) = &expr_lit.lit {
+                                    annotation = Some(lit_str.value());
+                                } else {
+                                    return Err(syn::Error::new_spanned(&assign_expr.right, "annotation must be a string literal"));
+                                }
+                            } else {
+                                return Err(syn::Error::new_spanned(&assign_expr.right, "annotation must be a string literal"));
+                            }
+                        }
+                        _ => {
+                            return Err(syn::Error::new_spanned(&left_path.path, format!("Unknown citation attribute: {}", name)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if !mock_source_found {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "mock syntax requires either 'same = \"content\"' or 'changed = (\"old\", \"new\")'"
+        ));
+    }
+    
+    // Create a special marker source expression with the args embedded
+    // This allows us to pass the keyword arguments to the validation phase
+    let source_expr = syn::parse_quote! { mock_keyword_syntax };
+    
+    Ok(Citation {
+        source_expr,
+        reason,
+        level,
+        annotation,
+        raw_args: Some(args),
+    })
+}
+
+/// Parse the traditional single source expression syntax
+fn parse_single_source_syntax(args: Vec<Expr>) -> Result<Citation> {
     let mut source_expr = None;
     let mut reason = None;
     let mut level = None;
     let mut annotation = None;
     let mut first = true;
     
+    let args_clone = args.clone();
     for arg in args {
         match &arg {
             // First argument should be the source expression 
@@ -159,6 +255,7 @@ fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<C
         reason,
         level,
         annotation,
+        raw_args: Some(args_clone),
     })
 }
 
@@ -257,7 +354,14 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
         quote! {}
     };
     
-    // Generate a unique function name to ensure the source import is used
+    // Check if this is keyword syntax - if so, don't generate a source usage function
+    let is_keyword_syntax = if let Expr::Path(path_expr) = source_expr {
+        path_expr.path.segments.len() == 1 && path_expr.path.segments[0].ident == "mock_keyword_syntax"
+    } else {
+        false
+    };
+    
+    // Generate a unique function name to ensure the source import is used (only for non-keyword syntax)
     let use_source_fn_name = syn::Ident::new(
         &format!("_cite_use_source_{}", 
                  std::ptr::addr_of!(*citation) as usize),
@@ -268,45 +372,70 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
     match validation_result {
         Ok(None) => {
             // Validation passed
-            quote! {
-                #reason_comment
-                // Citation validation passed
-                const _: () = ();
-                
-                // Include source to avoid unused import warnings
-                #[allow(dead_code)]
-                fn #use_source_fn_name() {
-                    let _source = #source_expr;
+            if is_keyword_syntax {
+                quote! {
+                    #reason_comment
+                    // Citation validation passed
+                    const _: () = ();
+                }
+            } else {
+                quote! {
+                    #reason_comment
+                    // Citation validation passed
+                    const _: () = ();
+                    
+                    // Include source to avoid unused import warnings
+                    #[allow(dead_code)]
+                    fn #use_source_fn_name() {
+                        let _source = #source_expr;
+                    }
                 }
             }
         }
         Ok(Some(warning_msg)) => {
             // Validation failed but should only warn
-            quote! {
-                #reason_comment
-                // Citation validation warning
-                const _: () = {
-                    const _WARNING: &str = #warning_msg;
-                    ()
-                };
-                
-                // Include source to avoid unused import warnings
-                #[allow(dead_code)]
-                fn #use_source_fn_name() {
-                    let _source = #source_expr;
+            if is_keyword_syntax {
+                quote! {
+                    #reason_comment
+                    // Citation validation warning
+                    const _: () = {
+                        const _WARNING: &str = #warning_msg;
+                        ()
+                    };
+                }
+            } else {
+                quote! {
+                    #reason_comment
+                    // Citation validation warning
+                    const _: () = {
+                        const _WARNING: &str = #warning_msg;
+                        ()
+                    };
+                    
+                    // Include source to avoid unused import warnings
+                    #[allow(dead_code)]
+                    fn #use_source_fn_name() {
+                        let _source = #source_expr;
+                    }
                 }
             }
         }
         Err(error_msg) => {
             // Validation failed and should error
             let error_tokens = syn::Error::new(proc_macro2::Span::call_site(), error_msg).to_compile_error();
-            quote! {
-                #error_tokens
-                
-                // Include source to avoid unused import warnings even when erroring
-                #[allow(dead_code)]
-                fn #use_source_fn_name() {
-                    let _source = #source_expr;
+            if is_keyword_syntax {
+                quote! {
+                    #error_tokens
+                }
+            } else {
+                quote! {
+                    #error_tokens
+                    
+                    // Include source to avoid unused import warnings even when erroring
+                    #[allow(dead_code)]
+                    fn #use_source_fn_name() {
+                        let _source = #source_expr;
+                    }
                 }
             }
         }
@@ -363,41 +492,60 @@ fn try_execute_source_expression(
     behavior: &cite_core::CitationBehavior, 
     level_override: Option<cite_core::CitationLevel>
 ) -> Option<std::result::Result<Option<String>, String>> {
-    // Try to construct and execute MockSource using the mock module
-    if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
-        use cite_core::Source;
-        
-        // Execute the real API!
-        match mock_source.get() {
-            Ok(comparison) => {
-                let result = comparison.validate(behavior, level_override);
-                
-                if !result.is_valid() {
-                    let diff_msg = format!(
-                        "Citation content has changed!\n  Referenced: {}\n  Current: {}", 
-                        comparison.referenced().0,
-                        comparison.current().0
-                    );
-                    
-                    if result.should_fail_compilation() {
-                        return Some(Err(diff_msg));
-                    } else if result.should_report() {
-                        return Some(Ok(Some(diff_msg)));
-                    }
+    // Check if this uses keyword syntax by looking for the mock_keyword_syntax marker
+    if let Expr::Path(path_expr) = &citation.source_expr {
+        if path_expr.path.segments.len() == 1 && path_expr.path.segments[0].ident == "mock_keyword_syntax" {
+            // Use keyword syntax parsing
+            if let Some(args) = &citation.raw_args {
+                if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
+                    return execute_mock_source_validation(mock_source, behavior, level_override);
                 }
-                
-                return Some(Ok(None));
-            }
-            Err(e) => {
-                return Some(Err(format!("Citation source error: {:?}", e)));
             }
         }
     }
     
-    // Add support for other source types here as needed
-    // For example: try_construct_http_source, try_construct_file_source, etc.
+    // Try to construct and execute MockSource using the traditional expression parsing
+    if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
+        return execute_mock_source_validation(mock_source, behavior, level_override);
+    }
     
+    // Add support for other source types here as needed
     None
+}
+
+/// Execute mock source validation and return the result
+fn execute_mock_source_validation(
+    mock_source: cite_core::mock::MockSource,
+    behavior: &cite_core::CitationBehavior, 
+    level_override: Option<cite_core::CitationLevel>
+) -> Option<std::result::Result<Option<String>, String>> {
+    use cite_core::Source;
+    
+    // Execute the real API!
+    match mock_source.get() {
+        Ok(comparison) => {
+            let result = comparison.validate(behavior, level_override);
+            
+            if !result.is_valid() {
+                let diff_msg = format!(
+                    "Citation content has changed!\n  Referenced: {}\n  Current: {}", 
+                    comparison.referenced().0,
+                    comparison.current().0
+                );
+                
+                if result.should_fail_compilation() {
+                    return Some(Err(diff_msg));
+                } else if result.should_report() {
+                    return Some(Ok(Some(diff_msg)));
+                }
+            }
+            
+            Some(Ok(None))
+        }
+        Err(e) => {
+            Some(Err(format!("Citation source error: {:?}", e)))
+        }
+    }
 }
 
 
