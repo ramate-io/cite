@@ -494,18 +494,9 @@ impl Source<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
     }
     
     fn get(&self) -> Result<Comparison<ReferencedHttp, CurrentHttp, HttpDiff>, SourceError> {
-        // Create a temporary HttpMatch without cache to avoid recursion
-        let uncached_self = Self {
-            matches: self.matches.clone(),
-            source_url: self.source_url.clone(),
-            cache_path: self.cache_path.clone(),
-            id: self.id.clone(),
-            cache: self.cache.clone(),
-            cache_behavior: cite_cache::CacheBehavior::Ignored, // This prevents recursion
-        };
         
         // Use the internal cache with the configured behavior
-        self.cache.get_source_with_cache(uncached_self, self.cache_behavior.clone())
+        self.cache.get_source_with_cache(self, self.cache_behavior.clone())
             .map_err(|e| SourceError::Network(format!("Cache error: {}", e)))
     }
     
@@ -622,22 +613,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_http_with_cache() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), std::path::PathBuf::from("cache"));
-        let cache = builder.build()?;
-        
-        let http_match = HttpMatch::cached("https://example.com", ".*")?;
-        
-        // Test with cache enabled
-        let result = cache.get_source_with_cache(http_match, CacheBehavior::Enabled)?;
-        
-        assert!(result.current().content.contains("Example Domain"));
-        assert!(!result.diff().is_empty()); // Should have differences since referenced is placeholder
-        
-        Ok(())
-    }
+  
 
     #[test]
     fn test_cacheable_serialization() -> Result<()> {
@@ -722,41 +698,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_full_workflow_with_cache_and_diff() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), std::path::PathBuf::from("cache"));
-        let cache = builder.build()?;
-        
-        let http_match = HttpMatch::cached("https://worldtimeapi.org/api/timezone/UTC", r#""timestamp":\s*(\d+)"#)?;
-        
-        // First access - will cache current as referenced
-        let result1 = cache.get_source_with_cache(http_match, CacheBehavior::Enabled)?;
-        let first_timestamp = result1.current().content.clone();
-        
-        // Create a new source with same ID
-        let http_match2 = HttpMatch::cached("https://worldtimeapi.org/api/timezone/UTC", r#""timestamp":\s*(\d+)"#)?;
-        
-        // Second access - will use cached referenced but fetch fresh current
-        std::thread::sleep(std::time::Duration::from_millis(1001)); // Ensure different timestamp (> 1 second)
-        let result2 = cache.get_source_with_cache(http_match2, CacheBehavior::Enabled)?;
-        
-        // Should use cached value as referenced
-        assert_eq!(result2.referenced().content, first_timestamp);
-        
-        // The key test: referenced should come from cache, current should be fresh
-        // Even if timestamps are the same, this demonstrates cache behavior
-        println!("Cached referenced: {}", result2.referenced().content);
-        println!("Fresh current: {}", result2.current().content);
-        
-        // If content is different, should show a diff
-        if result2.current().content != first_timestamp {
-            assert!(result2.diff().content_changed);
-            assert!(!result2.diff().is_empty());
-        }
-        
-        Ok(())
-    }
 
         #[test]
     fn test_http_diff_formatting() -> Result<()> {

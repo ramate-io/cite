@@ -129,7 +129,7 @@ impl Cache {
    /// If it is not, we fetch the source via [Source::get_referenced] and [Source::get_current] and fill the cache with the current value.
    /// 
    /// Note: this caching discprenacy between referenced and current means that a source that does not have a reference and current implementation that serialize to the same thing for the same content may always return a diff. 
-   pub fn get_source_with_cache<S: Source<R, C, D>, R: CacheableReferenced, C: CacheableCurrent<R, D>, D: Diff>(&self, source: S, behavior: CacheBehavior) -> Result<Comparison<R, C, D>, CacheError> {
+   pub fn get_source_with_cache<S: Source<R, C, D>, R: CacheableReferenced, C: CacheableCurrent<R, D>, D: Diff>(&self, source: &S, behavior: CacheBehavior) -> Result<Comparison<R, C, D>, CacheError> {
     match behavior {
             CacheBehavior::Ignored => {
                 let comparison = source.get().map_err(CacheError::SourceError)?;
@@ -346,7 +346,7 @@ mod tests {
             current: TestCurrent { content: "current content".to_string() },
         };
 
-        let result = cache.get_source_with_cache(source, CacheBehavior::Ignored)?;
+        let result = cache.get_source_with_cache(&source, CacheBehavior::Ignored)?;
         
         assert_eq!(result.referenced().content, "ref content");
         assert_eq!(result.current().content, "current content");
@@ -366,7 +366,7 @@ mod tests {
             current: TestCurrent { content: "current content".to_string() },
         };
 
-        let result = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        let result = cache.get_source_with_cache(&source, CacheBehavior::Enabled)?;
         
         assert_eq!(result.referenced().content, "ref content");
         assert_eq!(result.current().content, "current content");
@@ -392,7 +392,7 @@ mod tests {
             current: TestCurrent { content: "current content".to_string() },
         };
 
-        let result = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        let result = cache.get_source_with_cache(&source, CacheBehavior::Enabled)?;
         
         // Should use cached referenced content
         assert_eq!(result.referenced().content, "cached content");
@@ -446,7 +446,7 @@ mod tests {
             current: TestCurrent { content: "original current".to_string() },
         };
         
-        let result1 = cache.get_source_with_cache(source1, CacheBehavior::Enabled)?;
+        let result1 = cache.get_source_with_cache(&source1, CacheBehavior::Enabled)?;
         assert_eq!(result1.referenced().content, "original referenced");
         assert_eq!(result1.current().content, "original current");
         
@@ -457,7 +457,7 @@ mod tests {
             current: TestCurrent { content: "NEW current".to_string() },
         };
         
-        let result2 = cache.get_source_with_cache(source2, CacheBehavior::Enabled)?;
+        let result2 = cache.get_source_with_cache(&source2, CacheBehavior::Enabled)?;
         assert_eq!(result2.referenced().content, "original current"); // Uses cached value
         assert_eq!(result2.current().content, "NEW current"); // Uses fresh value
         assert!(result2.diff().changed); // Should show difference
@@ -483,7 +483,7 @@ mod tests {
         };
 
         // Use cache with Ignored behavior
-        let result = cache.get_source_with_cache(source, CacheBehavior::Ignored)?;
+        let result = cache.get_source_with_cache(&source, CacheBehavior::Ignored)?;
         
         // Verify the comparison result is correct
         assert_eq!(result.referenced().content, "ref content");
@@ -515,7 +515,7 @@ mod tests {
         };
 
         // Use cache with Enabled behavior (no existing cache)
-        let result = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        let result = cache.get_source_with_cache(&source, CacheBehavior::Enabled)?;
         
         // Should use the source's referenced and current values
         assert_eq!(result.referenced().content, "original ref");
@@ -552,7 +552,7 @@ mod tests {
         };
 
         // Use cache with Enabled behavior (with existing cache)
-        let result = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        let result = cache.get_source_with_cache(&source, CacheBehavior::Enabled)?;
         
         // Should use cached value for referenced, fresh current
         assert_eq!(result.referenced().content, "previously cached content"); // From cache
@@ -583,7 +583,7 @@ mod tests {
         };
 
         // First call with Enabled (no cache) - should populate cache with current
-        let result1 = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        let result1 = cache.get_source_with_cache(&source, CacheBehavior::Enabled)?;
         assert_eq!(result1.referenced().content, identical_content);
         assert_eq!(result1.current().content, identical_content);
         assert!(!result1.diff().changed); // Should be identical, no diff
@@ -596,7 +596,7 @@ mod tests {
         };
 
         // Second call with Enabled (with cache) - demonstrates the discrepancy
-        let result2 = cache.get_source_with_cache(source2, CacheBehavior::Enabled)?;
+        let result2 = cache.get_source_with_cache(&source2, CacheBehavior::Enabled)?;
         
         // The "discrepancy" mentioned in docs:
         // - referenced comes from cache (which was serialized as current)
@@ -628,12 +628,12 @@ mod tests {
         // Test Ignored behavior
         let source_ignored = create_source("ignored");
         let id_ignored = source_ignored.id.clone();
-        let result_ignored = cache.get_source_with_cache(source_ignored, CacheBehavior::Ignored)?;
+        let result_ignored = cache.get_source_with_cache(&source_ignored, CacheBehavior::Ignored)?;
         
         // Test Enabled behavior (no cache)
         let source_enabled = create_source("enabled");
         let id_enabled = source_enabled.id.clone();
-        let result_enabled = cache.get_source_with_cache(source_enabled, CacheBehavior::Enabled)?;
+        let result_enabled = cache.get_source_with_cache(&source_enabled, CacheBehavior::Enabled)?;
         
         // Both should produce the same comparison results
         assert_eq!(result_ignored.referenced().content, result_enabled.referenced().content);
@@ -666,7 +666,7 @@ mod tests {
             current: TestCurrent { content: "first current".to_string() },
         };
         
-        let result1 = cache.get_source_with_cache(source1, CacheBehavior::Enabled)?;
+        let result1 = cache.get_source_with_cache(&source1, CacheBehavior::Enabled)?;
         assert_eq!(result1.referenced().content, "first ref");
         assert_eq!(result1.current().content, "first current");
         
@@ -681,7 +681,7 @@ mod tests {
             current: TestCurrent { content: "second current".to_string() },
         };
         
-        let result2 = cache.get_source_with_cache(source2, CacheBehavior::Enabled)?;
+        let result2 = cache.get_source_with_cache(&source2, CacheBehavior::Enabled)?;
         assert_eq!(result2.referenced().content, "first current"); // From cache!
         assert_eq!(result2.current().content, "second current"); // Fresh
         assert!(result2.diff().changed);
