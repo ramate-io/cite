@@ -264,7 +264,7 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
                             source_args_found = true;
                         }
                         // HTTP source parameters
-                        "url" | "pattern" | "selector" | "match_type" | "fragment" => {
+                        "url" | "pattern" | "selector" | "match_type" | "fragment" | "cache" => {
                             source_args_found = true;
                         }
                         "reason" => {
@@ -751,7 +751,7 @@ fn execute_http_source_validation(
 ) -> Option<std::result::Result<Option<String>, String>> {
     use cite_core::Source;
     
-    // Execute the real API!
+    // HTTP sources now handle caching internally
     match http_source.get() {
         Ok(comparison) => {
             let result = comparison.validate(behavior, level_override);

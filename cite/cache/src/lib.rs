@@ -72,6 +72,7 @@ pub enum CacheError {
 	SourceError(#[source] SourceError),
 }
 
+#[derive(Debug, Clone)]
 pub struct Cache {
     builder: CacheBuilder,
 }

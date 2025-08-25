@@ -313,58 +313,90 @@ pub struct HttpMatch {
     pub source_url: SourceUrl,
     pub cache_path: String,
     id: Id,
+    cache: cite_cache::Cache,
+    cache_behavior: cite_cache::CacheBehavior,
 }
 
 impl HttpMatch {
-    /// Create a new http match with caching
+    /// Create a new http match with caching (legacy method)
     pub fn cached(url: &str, pattern: &str) -> Result<Self, SourceError> {
-        let source_url = SourceUrl::new(url)?;
-        let matches = MatchExpression::regex(pattern);
-        let cache_path = format!("http_{}", Self::url_to_cache_key(url));
-        let id = Id::new(cache_path.clone());
-        
-        Ok(Self {
-            matches,
-            source_url,
-            cache_path,
-            id,
-        })
+        Self::with_match_expression(url, MatchExpression::regex(pattern))
     }
     
     /// Create with custom match expression
     pub fn with_match_expression(url: &str, expression: MatchExpression) -> Result<Self, SourceError> {
+        Self::with_match_expression_and_cache_behavior(url, expression, cite_cache::CacheBehavior::Enabled)
+    }
+    
+    /// Create with custom match expression and cache behavior
+    pub fn with_match_expression_and_cache_behavior(
+        url: &str, 
+        expression: MatchExpression, 
+        cache_behavior: cite_cache::CacheBehavior
+    ) -> Result<Self, SourceError> {
+        use cite_cache::CacheBuilder;
+        
         let source_url = SourceUrl::new(url)?;
         let cache_path = format!("http_{}", Self::url_to_cache_key(url));
         let id = Id::new(cache_path.clone());
+        
+        // Always create a cache - the behavior determines how it's used
+        let cache_builder = CacheBuilder::default();
+        let cache = cache_builder.build()
+            .map_err(|e| SourceError::Network(format!("Failed to create cache: {}", e)))?;
         
         Ok(Self {
             matches: expression,
             source_url,
             cache_path,
             id,
+            cache,
+            cache_behavior,
         })
     }
     
     /// Create HTTP match with automatic fragment detection
     /// If the URL contains a fragment, it will automatically use fragment-based matching
     pub fn with_auto_fragment(url: &str) -> Result<Self, SourceError> {
-        let source_url = SourceUrl::new(url)?;
+        Self::try_new_for_macro(url, None, None)
+    }
+    
+    /// Create HTTP match for macro usage with cache behavior determination
+    /// 
+    /// This is the main constructor for procedural macros. It:
+    /// 1. Determines cache behavior from environment variables and kwargs
+    /// 2. Handles auto-fragment detection if URL contains #fragment
+    /// 3. Creates appropriate match expression based on parameters
+    /// 
+    /// Parameters:
+    /// - url: The target URL (may contain fragment)
+    /// - match_expression: Optional explicit match expression
+    /// - cache_override: Optional cache behavior from macro kwargs
+    pub fn try_new_for_macro(
+        url: &str,
+        match_expression: Option<MatchExpression>,
+        cache_override: Option<cite_cache::CacheBehavior>
+    ) -> Result<Self, SourceError> {
+        // Determine final cache behavior (env var overrides kwargs)
+        let cache_behavior = determine_cache_behavior_for_macro(cache_override);
         
-        let matches = if let Some(fragment) = source_url.fragment() {
-            MatchExpression::fragment(fragment)
+        // Determine match expression
+        let final_match_expression = if let Some(expr) = match_expression {
+            expr
         } else {
-            MatchExpression::full_document()
+            // Auto-detect based on URL fragment
+            let source_url = SourceUrl::new(url)?;
+            if let Some(fragment) = source_url.fragment() {
+                MatchExpression::fragment(fragment)
+            } else {
+                // No explicit match expression and no fragment - this should be an error
+                return Err(SourceError::ContentParsing(
+                    "HTTP citation requires either an explicit match expression (pattern/selector/match_type) or a URL with fragment".to_string()
+                ));
+            }
         };
         
-        let cache_path = format!("http_{}", Self::url_to_cache_key(url));
-        let id = Id::new(cache_path.clone());
-        
-        Ok(Self {
-            matches,
-            source_url,
-            cache_path,
-            id,
-        })
+        Self::with_match_expression_and_cache_behavior(url, final_match_expression, cache_behavior)
     }
     
     /// Convert URL to a safe cache key
@@ -431,24 +463,64 @@ impl HttpMatch {
     }
 }
 
+/// Determine cache behavior for macro usage based on environment variables and keyword arguments
+/// 
+/// Environment variable CACHE_RESET takes precedence:
+/// - CACHE_RESET=OVERWRITE -> CacheBehavior::Ignored (forces fresh fetch)
+/// - CACHE_RESET=NONE -> Uses default behavior
+/// 
+/// If no environment override, uses the provided cache_override or defaults to Enabled
+fn determine_cache_behavior_for_macro(cache_override: Option<cite_cache::CacheBehavior>) -> cite_cache::CacheBehavior {
+    // Check environment variable first (takes precedence)
+    if let Ok(cache_reset) = std::env::var("CACHE_RESET") {
+        match cache_reset.to_uppercase().as_str() {
+            "OVERWRITE" => return cite_cache::CacheBehavior::Ignored,
+            "NONE" => {
+                // Fall through to use provided behavior or default
+            }
+            _ => {
+                // Invalid value, fall through to default behavior
+            }
+        }
+    }
+    
+    // Use provided cache behavior or default to Enabled
+    cache_override.unwrap_or(cite_cache::CacheBehavior::Enabled)
+}
+
 impl Source<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
     fn id(&self) -> &Id {
         &self.id
     }
     
     fn get(&self) -> Result<Comparison<ReferencedHttp, CurrentHttp, HttpDiff>, SourceError> {
-        let current = self.get_current()?;
-        let referenced = self.get_referenced()?;
-        let diff = current.diff(&referenced)?;
-        Ok(Comparison::new(referenced, current, diff))
+        // Create a temporary HttpMatch without cache to avoid recursion
+        let uncached_self = Self {
+            matches: self.matches.clone(),
+            source_url: self.source_url.clone(),
+            cache_path: self.cache_path.clone(),
+            id: self.id.clone(),
+            cache: self.cache.clone(),
+            cache_behavior: cite_cache::CacheBehavior::Ignored, // This prevents recursion
+        };
+        
+        // Use the internal cache with the configured behavior
+        self.cache.get_source_with_cache(uncached_self, self.cache_behavior.clone())
+            .map_err(|e| SourceError::Network(format!("Cache error: {}", e)))
     }
     
     fn get_referenced(&self) -> Result<ReferencedHttp, SourceError> {
-        // This would typically come from commit history or cache
-        // For now, return a placeholder
+        // This method provides a fallback when no cache is available
+        // In practice, the cache system should be used via Cache::get_source_with_cache()
+        // which will provide the actual referenced content from the cache
+        //
+        // For sources without cache, we return the current content as the reference
+        // This makes the source "self-referencing" on first use
+        let current = self.get_current()?;
+        
         Ok(ReferencedHttp {
-            content: "Referenced content placeholder".to_string(),
-            metadata: HashMap::new(),
+            content: current.content,
+            metadata: current.metadata,
             source_url: self.source_url.clone(),
             match_expression: self.matches.clone(),
         })

@@ -94,6 +94,7 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
             // Look through remaining arguments for assignments
             let mut url = None;
             let mut match_expression = None;
+            let mut cache_behavior = None; // Will be determined later based on env vars and kwargs
             
             for arg in &args[1..] {
                 if let Expr::Assign(assign_expr) = arg {
@@ -138,6 +139,21 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
                                         match_expression = Some(MatchExpression::fragment(&fragment_str));
                                     }
                                 }
+                                "cache" => {
+                                    if let Some(cache_str) = extract_string_literal(&assign_expr.right) {
+                                        match cache_str.as_str() {
+                                            "enabled" | "true" => {
+                                                cache_behavior = Some(cite_cache::CacheBehavior::Enabled);
+                                            }
+                                            "disabled" | "false" | "ignored" => {
+                                                cache_behavior = Some(cite_cache::CacheBehavior::Ignored);
+                                            }
+                                            _ => {
+                                                // Invalid cache value, ignore
+                                            }
+                                        }
+                                    }
+                                }
                                 _ => continue, // Unknown parameter, skip
                             }
                         }
@@ -152,26 +168,8 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
                     return None;
                 }
                 
-                // Handle auto-fragment detection
-                if let Some(match_expr) = match_expr_opt {
-                    // Check if this was "auto" match type
-                    if matches!(match_expr, MatchExpression::FullDocument) {
-                        // Check if URL has fragment and we specified auto
-                        if url_str.contains('#') {
-                            // Try auto-fragment detection
-                            return HttpMatch::with_auto_fragment(&url_str).ok();
-                        }
-                    }
-                    
-                    // Use explicit match expression
-                    return HttpMatch::with_match_expression(&url_str, match_expr).ok();
-                } else if url_str.contains('#') {
-                    // No explicit match expression but URL has fragment - use auto detection
-                    return HttpMatch::with_auto_fragment(&url_str).ok();
-                } else {
-                    // No match expression and no fragment - need to specify one
-                    return None;
-                }
+                // Use the unified constructor for macro usage
+                return HttpMatch::try_new_for_macro(&url_str, match_expr_opt, cache_behavior).ok();
             }
             
             // If we got this far but don't have required params, return None
