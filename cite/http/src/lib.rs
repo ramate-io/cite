@@ -17,6 +17,8 @@ pub enum MatchExpression {
     XPath(String),
     /// Full document (no matching)
     FullDocument,
+    /// Fragment-based matching (automatically targets element with matching id/name)
+    Fragment(String),
 }
 
 impl MatchExpression {
@@ -38,6 +40,11 @@ impl MatchExpression {
     /// Create a full document match (no extraction)
     pub fn full_document() -> Self {
         Self::FullDocument
+    }
+    
+    /// Create a fragment match expression
+    pub fn fragment(fragment_id: &str) -> Self {
+        Self::Fragment(fragment_id.to_string())
     }
     
     /// Extract matching content from http
@@ -78,24 +85,58 @@ impl MatchExpression {
             MatchExpression::FullDocument => {
                 Ok(content.to_string())
             }
+            MatchExpression::Fragment(fragment_id) => {
+                let document = Html::parse_document(content);
+                
+                // Try multiple selectors to find the fragment:
+                // 1. Element with matching id
+                // 2. Element with matching name (for older HTML)
+                // 3. Anchor with matching name
+                let selectors = [
+                    format!("#{}", fragment_id),                    // #fragment-id
+                    format!("[id='{}']", fragment_id),             // [id='fragment-id']
+                    format!("[name='{}']", fragment_id),           // [name='fragment-id']
+                    format!("a[name='{}']", fragment_id),          // a[name='fragment-id']
+                ];
+                
+                for selector_str in &selectors {
+                    if let Ok(selector) = Selector::parse(selector_str) {
+                        if let Some(element) = document.select(&selector).next() {
+                            // Extract the element and its contents
+                            let mut result = Vec::new();
+                            
+                            // Include the element itself and its descendants
+                            result.push(element.text().collect::<Vec<_>>().join(" ").trim().to_string());
+                            
+                            return Ok(result.join("\n"));
+                        }
+                    }
+                }
+                
+                // If no fragment found, return empty string (not an error - fragment might not exist)
+                Ok(String::new())
+            }
         }
     }
 }
 
-/// Source URL with validation and normalization
+/// Source URL with validation, normalization, and fragment support
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceUrl {
     url: String,
     normalized: String,
+    fragment: Option<String>,
 }
 
 impl SourceUrl {
     /// Create a new source URL with validation
     pub fn new(url: &str) -> Result<Self, SourceError> {
-        let normalized = Self::normalize_url(url)?;
+        let (base_url, fragment) = Self::parse_url_and_fragment(url);
+        let normalized = Self::normalize_url(&base_url)?;
         Ok(Self {
             url: url.to_string(),
             normalized,
+            fragment,
         })
     }
     
@@ -107,6 +148,27 @@ impl SourceUrl {
     /// Get the normalized URL for caching/comparison
     pub fn normalized(&self) -> &str {
         &self.normalized
+    }
+    
+    /// Get the URL fragment (part after #)
+    pub fn fragment(&self) -> Option<&str> {
+        self.fragment.as_deref()
+    }
+    
+    /// Get the base URL without fragment
+    pub fn base_url(&self) -> &str {
+        &self.normalized
+    }
+    
+    /// Parse URL and extract fragment
+    fn parse_url_and_fragment(url: &str) -> (String, Option<String>) {
+        if let Some(fragment_pos) = url.find('#') {
+            let base_url = url[..fragment_pos].to_string();
+            let fragment = url[fragment_pos + 1..].to_string();
+            (base_url, if fragment.is_empty() { None } else { Some(fragment) })
+        } else {
+            (url.to_string(), None)
+        }
     }
     
     /// Normalize URL for consistent caching
@@ -277,6 +339,28 @@ impl HttpMatch {
         
         Ok(Self {
             matches: expression,
+            source_url,
+            cache_path,
+            id,
+        })
+    }
+    
+    /// Create HTTP match with automatic fragment detection
+    /// If the URL contains a fragment, it will automatically use fragment-based matching
+    pub fn with_auto_fragment(url: &str) -> Result<Self, SourceError> {
+        let source_url = SourceUrl::new(url)?;
+        
+        let matches = if let Some(fragment) = source_url.fragment() {
+            MatchExpression::fragment(fragment)
+        } else {
+            MatchExpression::full_document()
+        };
+        
+        let cache_path = format!("http_{}", Self::url_to_cache_key(url));
+        let id = Id::new(cache_path.clone());
+        
+        Ok(Self {
+            matches,
             source_url,
             cache_path,
             id,
@@ -602,7 +686,7 @@ mod tests {
         Ok(())
     }
 
-    #[test] 
+        #[test]
     fn test_http_diff_formatting() -> Result<()> {
         let referenced = ReferencedHttp {
             content: "Line 1\nOld Line 2\nLine 3".to_string(),
@@ -630,6 +714,116 @@ mod tests {
         assert!(unified_diff.contains("-Old Line 2")); // removed line
         assert!(unified_diff.contains("+New Line 2")); // added line
         assert!(unified_diff.contains("+Line 4")); // new line
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_url_fragment_parsing() -> Result<()> {
+        // Test URL with fragment
+        let url_with_fragment = SourceUrl::new("https://example.com/docs#section-1")?;
+        assert_eq!(url_with_fragment.as_str(), "https://example.com/docs#section-1");
+        assert_eq!(url_with_fragment.base_url(), "https://example.com/docs");
+        assert_eq!(url_with_fragment.fragment(), Some("section-1"));
+        
+        // Test URL without fragment
+        let url_without_fragment = SourceUrl::new("https://example.com/docs")?;
+        assert_eq!(url_without_fragment.fragment(), None);
+        assert_eq!(url_without_fragment.base_url(), "https://example.com/docs");
+        
+        // Test URL with empty fragment
+        let url_empty_fragment = SourceUrl::new("https://example.com/docs#")?;
+        assert_eq!(url_empty_fragment.fragment(), None);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_fragment_match_expression() -> Result<()> {
+        let html_content = r#"
+            <html>
+                <body>
+                    <h1>Main Title</h1>
+                    <section id="intro">
+                        <h2>Introduction</h2>
+                        <p>This is the intro section.</p>
+                    </section>
+                    <section id="details">
+                        <h2>Details</h2>
+                        <p>This is the details section.</p>
+                    </section>
+                    <a name="legacy-anchor">Legacy content</a>
+                </body>
+            </html>
+        "#;
+        
+        // Test fragment matching by id
+        let fragment_expr = MatchExpression::fragment("intro");
+        let extracted = fragment_expr.extract_from(html_content)?;
+        assert!(extracted.contains("Introduction"));
+        assert!(extracted.contains("intro section"));
+        
+        // Test fragment matching by name attribute
+        let legacy_expr = MatchExpression::fragment("legacy-anchor");
+        let legacy_extracted = legacy_expr.extract_from(html_content)?;
+        assert!(legacy_extracted.contains("Legacy content"));
+        
+        // Test non-existent fragment
+        let missing_expr = MatchExpression::fragment("nonexistent");
+        let missing_extracted = missing_expr.extract_from(html_content)?;
+        assert_eq!(missing_extracted, "");
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_auto_fragment_detection() -> Result<()> {
+        // Test auto-fragment with URL containing fragment
+        let http_match = HttpMatch::with_auto_fragment("https://example.com#my-section")?;
+        assert_eq!(http_match.source_url.fragment(), Some("my-section"));
+        assert!(matches!(http_match.matches, MatchExpression::Fragment(_)));
+        
+        // Test auto-fragment with URL without fragment
+        let http_match_no_fragment = HttpMatch::with_auto_fragment("https://example.com")?;
+        assert_eq!(http_match_no_fragment.source_url.fragment(), None);
+        assert!(matches!(http_match_no_fragment.matches, MatchExpression::FullDocument));
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_fragment_based_content_extraction() -> Result<()> {
+        // Create a mock HTML response with fragments
+        let mock_html = r#"
+            <html>
+                <head><title>Test Page</title></head>
+                <body>
+                    <h1>Main Content</h1>
+                    <div id="important-section">
+                        <h2>Important Information</h2>
+                        <p>This is critical content that we want to track.</p>
+                        <ul>
+                            <li>Point 1</li>
+                            <li>Point 2</li>
+                        </ul>
+                    </div>
+                    <div id="other-section">
+                        <p>Other content that might change frequently.</p>
+                    </div>
+                </body>
+            </html>
+        "#;
+        
+        // Test extracting only the important section
+        let fragment_expr = MatchExpression::fragment("important-section");
+        let extracted = fragment_expr.extract_from(mock_html)?;
+        
+        assert!(extracted.contains("Important Information"));
+        assert!(extracted.contains("critical content"));
+        assert!(extracted.contains("Point 1"));
+        assert!(extracted.contains("Point 2"));
+        // Should NOT contain content from other sections
+        assert!(!extracted.contains("Other content"));
         
         Ok(())
     }

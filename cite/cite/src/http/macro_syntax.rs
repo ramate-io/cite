@@ -28,7 +28,9 @@
 //! **Match Type (pick one):**
 //! - `pattern = "regex"` - Regex pattern for content extraction
 //! - `selector = "h1"` - CSS selector for content extraction
+//! - `fragment = "section-id"` - Extract content from specific fragment/section
 //! - `match_type = "full"` - Full document (no extraction)
+//! - `match_type = "auto"` - Auto-detect fragment from URL (if URL contains #fragment)
 //!
 //! **Future Extensions:**
 //! - `headers = {"Authorization": "Bearer token"}` - Custom HTTP headers
@@ -54,6 +56,17 @@
 //! // Documentation validation  
 //! #[cite(http, url = "https://doc.rust-lang.org/std/", 
 //!        selector = "h1")]
+//!
+//! // Fragment-based validation (manual)
+//! #[cite(http, url = "https://example.com/docs", 
+//!        fragment = "important-section")]
+//!
+//! // Fragment-based validation (automatic)
+//! #[cite(http, url = "https://example.com/docs#important-section", 
+//!        match_type = "auto")]
+//!
+//! // Even simpler - just URL with fragment (auto-detects)
+//! #[cite(http, url = "https://example.com/docs#important-section")]
 //!
 //! // Full page validation
 //! #[cite(http, url = "https://example.com", 
@@ -110,10 +123,19 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
                                             "full" => {
                                                 match_expression = Some(MatchExpression::full_document());
                                             }
+                                            "auto" => {
+                                                // Will be handled later with auto-fragment detection
+                                                match_expression = Some(MatchExpression::full_document()); // placeholder
+                                            }
                                             _ => {
                                                 // Unknown match type, skip
                                             }
                                         }
+                                    }
+                                }
+                                "fragment" => {
+                                    if let Some(fragment_str) = extract_string_literal(&assign_expr.right) {
+                                        match_expression = Some(MatchExpression::fragment(&fragment_str));
                                     }
                                 }
                                 _ => continue, // Unknown parameter, skip
@@ -124,14 +146,32 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
             }
             
             // Construct HttpMatch if we have required parameters
-            if let (Some(url_str), Some(match_expr)) = (url, match_expression) {
+            if let (Some(url_str), match_expr_opt) = (url, match_expression) {
                 // Validate URL format at parse time
                 if !is_valid_url(&url_str) {
                     return None;
                 }
                 
-                // Try to create HttpMatch
-                return HttpMatch::with_match_expression(&url_str, match_expr).ok();
+                // Handle auto-fragment detection
+                if let Some(match_expr) = match_expr_opt {
+                    // Check if this was "auto" match type
+                    if matches!(match_expr, MatchExpression::FullDocument) {
+                        // Check if URL has fragment and we specified auto
+                        if url_str.contains('#') {
+                            // Try auto-fragment detection
+                            return HttpMatch::with_auto_fragment(&url_str).ok();
+                        }
+                    }
+                    
+                    // Use explicit match expression
+                    return HttpMatch::with_match_expression(&url_str, match_expr).ok();
+                } else if url_str.contains('#') {
+                    // No explicit match expression but URL has fragment - use auto detection
+                    return HttpMatch::with_auto_fragment(&url_str).ok();
+                } else {
+                    // No match expression and no fragment - need to specify one
+                    return None;
+                }
             }
             
             // If we got this far but don't have required params, return None
@@ -260,5 +300,63 @@ mod tests {
         assert!(!is_valid_url("ftp://example.com"));
         assert!(!is_valid_url("example.com"));
         assert!(!is_valid_url(""));
+    }
+
+    #[test]
+    fn test_parse_http_with_fragment() {
+        let args: Vec<Expr> = vec![
+            parse_quote!(http),
+            parse_quote!(url = "https://example.com"),
+            parse_quote!(fragment = "my-section"),
+        ];
+        
+        let result = try_parse_from_citation_args(&args);
+        assert!(result.is_some());
+        
+        let http_match = result.unwrap();
+        assert_eq!(http_match.source_url.as_str(), "https://example.com");
+    }
+
+    #[test]
+    fn test_parse_http_with_auto_fragment() {
+        let args: Vec<Expr> = vec![
+            parse_quote!(http),
+            parse_quote!(url = "https://example.com/docs#important-section"),
+            parse_quote!(match_type = "auto"),
+        ];
+        
+        let result = try_parse_from_citation_args(&args);
+        assert!(result.is_some());
+        
+        let http_match = result.unwrap();
+        assert_eq!(http_match.source_url.as_str(), "https://example.com/docs#important-section");
+        assert_eq!(http_match.source_url.fragment(), Some("important-section"));
+    }
+
+    #[test]
+    fn test_parse_http_with_url_fragment_only() {
+        let args: Vec<Expr> = vec![
+            parse_quote!(http),
+            parse_quote!(url = "https://example.com/docs#section-1"),
+        ];
+        
+        let result = try_parse_from_citation_args(&args);
+        assert!(result.is_some());
+        
+        let http_match = result.unwrap();
+        assert_eq!(http_match.source_url.fragment(), Some("section-1"));
+        // Should auto-detect fragment matching
+        assert!(matches!(http_match.matches, cite_http::MatchExpression::Fragment(_)));
+    }
+
+    #[test] 
+    fn test_parse_http_no_match_expression_no_fragment() {
+        let args: Vec<Expr> = vec![
+            parse_quote!(http),
+            parse_quote!(url = "https://example.com"),
+        ];
+        
+        let result = try_parse_from_citation_args(&args);
+        assert!(result.is_none(), "Should fail when no match expression and no fragment");
     }
 }

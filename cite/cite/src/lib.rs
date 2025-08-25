@@ -264,7 +264,7 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
                             source_args_found = true;
                         }
                         // HTTP source parameters
-                        "url" | "pattern" | "selector" | "match_type" => {
+                        "url" | "pattern" | "selector" | "match_type" | "fragment" => {
                             source_args_found = true;
                         }
                         "reason" => {
