@@ -1,3 +1,38 @@
+//! Keyword Argument Parsing for Mock Sources
+//!
+//! This module implements the parsing logic for the keyword argument syntax
+//! used with mock sources in `#[cite]` attributes.
+//!
+//! # Parsing Strategy
+//!
+//! The parser looks for the following patterns in citation arguments:
+//!
+//! ```text
+//! [mock, same = "content", ...other_args]
+//! [mock, changed = ("old", "new"), ...other_args]
+//! ```
+//!
+//! The parsing algorithm:
+//! 1. Verify first argument is the identifier `mock`
+//! 2. Scan remaining arguments for assignment expressions
+//! 3. Match assignment left-hand side to known mock parameters (`same`, `changed`)
+//! 4. Extract and validate right-hand side values
+//! 5. Construct MockSource using cite-core helper functions
+//!
+//! # Error Handling
+//!
+//! The parser is designed to fail gracefully:
+//! - Returns `None` if the syntax doesn't match mock source patterns
+//! - Allows the main citation parser to try other source types
+//! - Validates that string literals and tuples have the expected structure
+//!
+//! # Future Extensions
+//!
+//! The parsing framework can easily support additional mock source types:
+//! - `mock, missing = true` - Source that cannot be found
+//! - `mock, error = "network timeout"` - Source that fails with specific error
+//! - `mock, slow = ("content", 5000)` - Source that simulates slow network
+
 use syn::{Expr, Lit};
 use cite_core::mock::MockSource;
 

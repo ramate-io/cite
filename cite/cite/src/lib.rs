@@ -1,9 +1,137 @@
+//! Cite - Compile-time citation validation for Rust
+//!
+//! This crate provides procedural macros for annotating Rust code with citations
+//! and validating the referenced content at compile time.
+//!
+//! # Design Philosophy
+//!
+//! The cite system is built around several core design principles:
+//!
+//! ## 1. Zero Runtime Overhead
+//!
+//! All citation validation happens during macro expansion at compile time. This means:
+//! - No runtime performance impact on your application
+//! - Network calls and content validation occur during `cargo build`
+//! - Validation results directly influence compilation success/failure
+//!
+//! ## 2. Keyword Argument Syntax
+//!
+//! After evaluating multiple syntax approaches, we settled on keyword arguments:
+//!
+//! ```rust,ignore
+//! #[cite(mock, same = "content")]                    // ✅ Current approach
+//! #[cite(mock(same("content")))]                     // ❌ Function call ambiguity 
+//! #[cite(MockSource::same("content"))]               // ❌ Complex AST patterns
+//! ```
+//!
+//! The keyword syntax offers:
+//! - **Unambiguous parsing**: No conflicts with Rust's expression grammar
+//! - **Extensibility**: Easy to add new source types and parameters
+//! - **Readability**: Natural flow from source to parameters to behavior
+//!
+//! ## 3. Modular Architecture
+//!
+//! The system is split into focused crates:
+//! - `cite` (this crate): Procedural macro implementation, user-facing API
+//! - `cite-core`: Core traits, types, and runtime utilities
+//! - `cite-test`: Comprehensive test suite with compile-time behavior tests
+//!
+//! This separation allows:
+//! - Lightweight core that can be used without macro overhead
+//! - Clear separation of compile-time vs runtime concerns
+//! - Easier testing and maintenance
+//!
+//! ## 4. Environment Integration
+//!
+//! Citations can be controlled globally via environment variables:
+//! - `CITE_LEVEL`: Set global error/warning behavior
+//! - `CITE_ANNOTATION`: Control annotation output format
+//! - `CITE_GLOBAL`: Set strict vs lenient mode
+//!
+//! This enables different behavior in development vs CI vs production builds.
+//!
+//! # Syntax Evolution
+//!
+//! The citation syntax has evolved through several iterations:
+//!
+//! ## Evolution 1: Direct Source Construction
+//! ```rust,ignore
+//! #[cite(MockSource::same("content"))]
+//! ```
+//! **Problem**: Required complex AST pattern matching in the macro, limited to 
+//! known source types, couldn't handle arbitrary expressions.
+//!
+//! ## Evolution 2: Helper Macros
+//! ```rust,ignore
+//! #[cite(mock!(same!("content")))]
+//! ```
+//! **Problem**: Nested macro expansion order issues, the inner macros would 
+//! generate function calls that the outer macro couldn't parse reliably.
+//!
+//! ## Evolution 3: Function-like Syntax
+//! ```rust,ignore
+//! #[cite(mock(same("content")))]
+//! ```
+//! **Problem**: Rust's macro parser interpreted this as a function call, leading
+//! to "cannot find function" errors and complex parsing ambiguities.
+//!
+//! ## Evolution 4: Keyword Arguments (Current)
+//! ```rust,ignore
+//! #[cite(mock, same = "content")]
+//! #[cite(mock, changed = ("old", "new"), level = "ERROR")]
+//! ```
+//! **Success**: Clean separation between source type, source parameters, and 
+//! behavior parameters. No parsing ambiguities, easily extensible.
+//!
+//! # Implementation Details
+//!
+//! ## Macro Expansion Flow
+//!
+//! 1. **Parse Arguments**: Extract source type, source params, and behavior params
+//! 2. **Construct Source**: Create source object using keyword argument parsing
+//! 3. **Validate Content**: Execute source.get() during macro expansion
+//! 4. **Generate Code**: Emit validation results as compile-time errors/warnings
+//! 5. **Preserve Original**: Return the original item unchanged for runtime
+//!
+//! ## Validation Strategy
+//!
+//! The macro uses pattern matching to handle different source types:
+//! ```rust,ignore
+//! if args[0] == "mock" {
+//!     parse_mock_source(&args[1..])
+//! } else if args[0] == "http" {
+//!     parse_http_source(&args[1..])  // Future
+//! }
+//! ```
+//!
+//! This allows extending to new source types without breaking existing code.
+//!
+//! ## Error Propagation
+//!
+//! Validation results are converted to compile-time diagnostics:
+//! - `Ok(None)`: Validation passed, no output
+//! - `Ok(Some(msg))`: Validation failed, emit warning
+//! - `Err(msg)`: Validation failed, emit error and fail compilation
+//!
+//! The specific behavior depends on the `level` parameter and environment variables.
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
     parse_macro_input, parse_quote, Expr, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemMod,
     Lit, Result, punctuated::Punctuated, Token,
 };
+/// Mock source parsing and construction
+/// 
+/// This module handles the parsing of mock source syntax and construction of
+/// MockSource instances during macro expansion. It implements the keyword
+/// argument parsing for mock sources.
+/// 
+/// The mock source syntax supports:
+/// - `mock, same = "content"`: Content that should remain unchanged
+/// - `mock, changed = ("old", "new")`: Content that has changed from old to new
+/// 
+/// Additional behavior parameters are handled by the main citation parser.
 mod mock;
 
 /// The main `#[cite]` attribute macro

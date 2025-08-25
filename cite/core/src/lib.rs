@@ -1,3 +1,113 @@
+//! Cite Core - Fundamental abstractions for citation validation
+//!
+//! This crate provides the core traits, types, and utilities used by the cite
+//! citation validation system. It's designed to be lightweight and focused,
+//! containing only the essential abstractions needed for content validation.
+//!
+//! # Design Philosophy
+//!
+//! ## Separation of Concerns
+//!
+//! The core crate is deliberately separated from the procedural macro implementation:
+//! - **No macro dependencies**: Can be used independently for runtime validation
+//! - **Focused scope**: Only core abstractions and essential utilities
+//! - **Lightweight**: Minimal dependencies and surface area
+//!
+//! ## Runtime and Compile-time Duality
+//!
+//! While the main cite system operates at compile time via procedural macros,
+//! this crate provides utilities that work at both compile time and runtime:
+//!
+//! ```rust
+//! use cite_core::{mock_source_same, mock_source_changed, Source};
+//!
+//! // Runtime usage - for testing and development
+//! let source = mock_source_same("current content");
+//! let comparison = source.get().unwrap();
+//! assert!(comparison.is_same());
+//!
+//! // The same logic is used at compile time by the procedural macro
+//! ```
+//!
+//! ## Standard Library Integration
+//!
+//! The crate uses standard library types throughout:
+//! - `String` for content and error messages
+//! - Standard error handling with `thiserror`
+//! - Environment variable integration via `std::env`
+//!
+//! This design choice prioritizes simplicity and integration over `no_std` compatibility.
+//!
+//! # Key Abstractions
+//!
+//! ## Source Trait
+//!
+//! The fundamental abstraction for content sources:
+//!
+//! ```rust
+//! use cite_core::{Source, SourceError, Comparison};
+//!
+//! pub trait Source {
+//!     type Referenced: Referenced;
+//!     type Current: Current;
+//!     type Diff: Diff;
+//!     
+//!     fn get(&self) -> Result<Comparison<Self::Referenced, Self::Current, Self::Diff>, SourceError>;
+//! }
+//! ```
+//!
+//! ## Content Type System
+//!
+//! Content is modeled through three related traits:
+//! - `Referenced`: The content as it was originally cited
+//! - `Current`: The content as it exists now
+//! - `Diff`: A representation of changes between referenced and current
+//!
+//! This separation enables rich content validation beyond simple string comparison.
+//!
+//! ## Behavior Configuration
+//!
+//! Citation behavior is controlled through environment-aware configuration:
+//!
+//! ```rust
+//! use cite_core::{CitationBehavior, CitationLevel};
+//!
+//! // Load from environment variables (CITE_LEVEL, CITE_ANNOTATION, CITE_GLOBAL)
+//! let behavior = CitationBehavior::from_env();
+//!
+//! // Override locally
+//! let result = comparison.validate(&behavior, Some(CitationLevel::Warn));
+//! ```
+//!
+//! # Mock Implementation
+//!
+//! The `MockSource` provides a complete implementation for testing and development:
+//!
+//! ```rust
+//! use cite_core::{mock_source_same, mock_source_changed};
+//!
+//! // Content that should remain unchanged
+//! let unchanged = mock_source_same("stable API");
+//!
+//! // Content that has changed
+//! let changed = mock_source_changed("old version", "new version");
+//! ```
+//!
+//! The mock implementation serves multiple purposes:
+//! - **Testing**: Enables comprehensive testing without external dependencies
+//! - **Development**: Prototyping citation behavior before connecting real sources
+//! - **Documentation**: Clear examples of how the Source trait should behave
+//!
+//! # Future Extensions
+//!
+//! The trait system is designed to support additional source types:
+//! - HTTP sources for web content validation
+//! - File sources for local content validation
+//! - Git sources for repository content validation
+//! - Database sources for schema and data validation
+//!
+//! New source types integrate seamlessly with the existing validation and behavior system.
+
 pub mod mock;
 pub mod behavior;
 pub mod id;

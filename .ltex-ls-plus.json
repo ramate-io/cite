@@ -247,7 +247,8 @@
         "kiwisolver",
         "pyparsing",
         "Dioxus",
-        "Roadline"
+        "Roadline",
+        "READMEs"
       ]
     },
     "bibtex": { "fields": {} },
