@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_build() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cache_build() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new()?;
         let cite_dir = temp_dir.path().join("cite");
         let cache_subdir = PathBuf::from("cache");
@@ -246,7 +246,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_get_set_delete() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cache_get_set_delete() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new()?;
         let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
         let cache = builder.build()?;
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cacheable_referenced_serialization() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cacheable_referenced_serialization() -> Result<(), anyhow::Error> {
         let referenced = TestReferenced {
             content: "test content".to_string(),
         };
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cacheable_current_serialization() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_cacheable_current_serialization() -> Result<(), anyhow::Error> {
         let current = TestCurrent {
             content: "test content".to_string(),
         };
@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_source_with_cache_ignored() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_get_source_with_cache_ignored() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new()?;
         let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
         let cache = builder.build()?;
@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_source_with_cache_enabled_no_cache() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_get_source_with_cache_enabled_no_cache() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new()?;
         let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
         let cache = builder.build()?;
@@ -347,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_source_with_cache_enabled_with_cache() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_get_source_with_cache_enabled_with_cache() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new()?;
         let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
         let cache = builder.build()?;
