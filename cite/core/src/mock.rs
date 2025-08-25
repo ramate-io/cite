@@ -56,26 +56,36 @@ pub struct MockSource {
 }
 
 impl MockSource {
-    /// Create a new MockSource and return a static reference for use in macros
-    pub fn new(referenced: &'static str, current: &'static str) -> Self {
+    /// Create a new MockSource
+    pub fn new(referenced: String, current: String) -> Self {
         Self {
             id: Id::new(format!("mock_source_{}", referenced)),
-            referenced_content: referenced.to_string(),
-            current_content: current.to_string(),
+            referenced_content: referenced,
+            current_content: current,
         }
     }
     
     /// Helper for when referenced and current are the same (no diff)
-    /// Returns &'static Self for use in macros
-    pub fn same(content: &'static str) -> Self {
-        Self::new(content, content)
+    pub fn same(content: String) -> Self {
+        Self::new(content.clone(), content)
     }
     
     /// Helper for when content has changed
-    /// Returns &'static Self for use in macros
-    pub fn changed(referenced: &'static str, current: &'static str) -> Self {
+    pub fn changed(referenced: String, current: String) -> Self {
         Self::new(referenced, current)
     }
+}
+
+/// Helper function for creating a mock source with same content
+/// Convenient for runtime usage with string literals
+pub fn mock_source_same(content: &str) -> MockSource {
+    MockSource::same(content.to_string())
+}
+
+/// Helper function for creating a mock source with changed content  
+/// Convenient for runtime usage with string literals
+pub fn mock_source_changed(referenced: &str, current: &str) -> MockSource {
+    MockSource::changed(referenced.to_string(), current.to_string())
 }
 
 impl Source<ReferencedString, CurrentString, StringDiff> for MockSource {
@@ -104,25 +114,4 @@ impl Source<ReferencedString, CurrentString, StringDiff> for MockSource {
 // Macro Pattern Matching Support
 // ==============================================================================
 
-/// Helper functions for creating MockSource instances from parsed arguments
-/// 
-/// These functions are used by the procedural macro to construct MockSource
-/// instances from parsed string literals.
 
-/// Create a MockSource with the same referenced and current content
-pub fn mock_source_same(content: String) -> MockSource {
-    MockSource {
-        id: Id::new(format!("mock_source_{}", content)),
-        referenced_content: content.clone(),
-        current_content: content,
-    }
-}
-
-/// Create a MockSource with different referenced and current content
-pub fn mock_source_changed(referenced: String, current: String) -> MockSource {
-    MockSource {
-        id: Id::new(format!("mock_source_{}", referenced)),
-        referenced_content: referenced,
-        current_content: current,
-    }
-}

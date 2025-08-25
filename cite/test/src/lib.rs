@@ -1,40 +1,40 @@
 #[cfg(test)]
 pub mod tests {
-    use cite_core::{Source, mock::MockSource};
-    use cite::cite;
+    use cite::{cite, mock, same, changed};
+    use cite_core::{Source, mock_source_same, mock_source_changed};
 
     // Test basic citation on a function
-    #[cite(MockSource::same("test content"))]
+    #[cite(mock!(same!("test content")))]
     fn test_function_with_citation() {
         println!("This function has a citation");
     }
 
     // Test citation with reason
-    #[cite(MockSource::same("important content"), reason = "This demonstrates why we need this reference")]
+    #[cite(mock!(same!("important content")), reason = "This demonstrates why we need this reference")]
     fn test_function_with_reason() {
         println!("This function has a citation with a reason");
     }
 
     // Test citation with multiple attributes
-    #[cite(MockSource::same("complex content"), reason = "Complex reasoning", level = "WARN")]
+    #[cite(mock!(same!("complex content")), reason = "Complex reasoning", level = "WARN")]
     fn test_function_with_multiple_attributes() {
         println!("This function has multiple citation attributes");
     }
 
     // Test citation on a struct
-    #[cite(MockSource::same("struct content"))]
+    #[cite(mock!(same!("struct content")))]
     struct TestStruct {
         field: String,
     }
 
     // Test citation on a trait
-    #[cite(MockSource::same("trait content"))]
+    #[cite(mock!(same!("trait content")))]
     pub trait TestTrait {
         fn do_something(&self);
     }
 
     // Test citation on impl block
-    #[cite(MockSource::same("impl content"))]
+    #[cite(mock!(same!("impl content")))]
     impl TestStruct {
         fn new(field: String) -> Self {
             Self { field }
@@ -56,7 +56,7 @@ pub mod tests {
     #[test]
     fn test_citation_with_changed_content() {
         // This should trigger a compile-time warning/error in debug mode
-        #[cite(MockSource::changed("original content", "modified content"))]
+        #[cite(mock!(changed!("original content", "modified content")))]
         fn function_with_changed_citation() {
             println!("This function references content that has changed");
         }
@@ -66,8 +66,8 @@ pub mod tests {
     }
 
     // Test multiple citations on the same item
-    #[cite(MockSource::same("first reference"))]
-    #[cite(MockSource::same("second reference"))]
+    #[cite(mock!(same!("first reference")))]
+    #[cite(mock!(same!("second reference")))]
     fn function_with_multiple_citations() {
         println!("This function has multiple citations");
     }
@@ -80,11 +80,11 @@ pub mod tests {
     #[test]
     fn test_mock_source_directly() {
         // This test uses MockSource at runtime, which will satisfy the import analyzer
-        let source = MockSource::same("test content");
+        let source = mock_source_same("test content");
         let comparison = source.get().expect("Should get comparison");
         assert!(comparison.is_same());
 
-        let changed_source = MockSource::changed("old", "new");
+        let changed_source = mock_source_changed("old", "new");
         let changed_comparison = changed_source.get().expect("Should get comparison");
         assert!(!changed_comparison.is_same());
     }
@@ -101,7 +101,7 @@ pub mod tests {
         );
         
         // Valid citation should pass
-        let valid_source = MockSource::same("content");
+        let valid_source = mock_source_same("content");
         let valid_comparison = valid_source.get().expect("Should get comparison");
         let valid_result = valid_comparison.validate(&behavior, None);
         assert!(valid_result.is_valid());
@@ -109,7 +109,7 @@ pub mod tests {
         assert!(!valid_result.should_report());
         
         // Invalid citation with default level (warn) should report but not fail
-        let invalid_source = MockSource::changed("old", "new");
+        let invalid_source = mock_source_changed("old", "new");
         let invalid_comparison = invalid_source.get().expect("Should get comparison");
         let invalid_result = invalid_comparison.validate(&behavior, None);
         assert!(!invalid_result.is_valid());
@@ -143,7 +143,7 @@ pub mod tests {
             CitationGlobal::Strict,
         );
         
-        let invalid_source = MockSource::changed("old", "new");
+        let invalid_source = mock_source_changed("old", "new");
         let invalid_comparison = invalid_source.get().expect("Should get comparison");
         
         // In strict mode, local overrides should be ignored

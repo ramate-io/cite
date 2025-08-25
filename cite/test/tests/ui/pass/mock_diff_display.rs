@@ -1,23 +1,23 @@
 // Test that mock sources with diffs compile but can show diff information
 
-use cite::cite;
-use cite_core::mock::MockSource;
+use cite::{cite, mock, same, changed};
+
 
 // This should compile successfully (content is the same)
-#[cite(MockSource::same("unchanged content"))]
+#[cite(mock!(same!("unchanged content")))]
 fn function_with_same_content() {
     println!("No changes here");
 }
 
 // This should also compile (our macro doesn't fail compilation by default)
 // but demonstrates that diffs are being tracked
-#[cite(MockSource::changed("original version", "updated version"))]
+#[cite(mock!(changed!("original version", "updated version")))]
 fn function_with_changed_content() {
     println!("This has a diff in the citation");
 }
 
 // Test with reason and level attributes on changed content
-#[cite(MockSource::changed("old API", "new API"), reason = "API evolution tracking", level = "WARN")]
+#[cite(mock!(changed!("old API", "new API")), reason = "API evolution tracking", level = "WARN")]
 fn function_with_detailed_diff() {
     println!("API changed but marked appropriately");
 }

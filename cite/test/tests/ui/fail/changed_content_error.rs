@@ -1,9 +1,8 @@
-// Test that MockSource::changed() with ERROR level fails compilation
+// Test that mock(changed()) with ERROR level fails compilation
 
-use cite::cite;
-use cite_core::mock::MockSource;
+use cite::{cite, mock, changed};
 
-#[cite(MockSource::changed("old content", "new content"), level = "ERROR")]
+#[cite(mock!(changed!("old content", "new content")), level = "ERROR")]
 fn function_that_should_fail_compilation() {
     println!("This should fail to compile due to citation validation");
 }

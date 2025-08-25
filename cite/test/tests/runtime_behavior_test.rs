@@ -3,10 +3,10 @@
 
 #[test]
 fn test_mock_source_diffs() {
-    use cite_core::{mock::MockSource, Source, CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
+    use cite_core::{mock_source_changed, Source, CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
     
     // Test that MockSource::changed actually creates diffs
-    let changed_source = MockSource::changed("original content", "modified content");
+    let changed_source = mock_source_changed("original content", "modified content");
     let comparison = changed_source.get().expect("Should get comparison");
     
     assert!(!comparison.is_same(), "Changed source should show differences");
@@ -30,9 +30,9 @@ fn test_mock_source_diffs() {
 
 #[test]
 fn test_behavior_level_overrides() {
-    use cite_core::{mock::MockSource, Source, CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
+    use cite_core::{mock_source_changed, Source, CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
     
-    let changed_source = MockSource::changed("old", "new");
+    let changed_source = mock_source_changed("old", "new");
     let comparison = changed_source.get().expect("Should get comparison");
     
     // Test lenient mode with local overrides
@@ -90,10 +90,10 @@ fn test_environment_variable_parsing() {
 
 #[test]
 fn test_diff_content_display() {
-    use cite_core::{mock::MockSource, Source};
+    use cite_core::{mock_source_changed, Source};
     
     // Test that we can access diff details for display
-    let source = MockSource::changed(
+    let source = mock_source_changed(
         "function old_api() -> Result<(), Error>", 
         "function new_api() -> Result<String, MyError>"
     );

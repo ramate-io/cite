@@ -1,9 +1,8 @@
 // Test that invalid citation attributes fail to compile
 
-use cite::cite;
-use cite_core::mock::MockSource;
+use cite::{cite, mock, same};
 
-#[cite(MockSource::same("content"), invalid_attr = "value")]  // Should fail
+#[cite(mock!(same!("content")), invalid_attr = "value")]  // Should fail
 fn test_function() {}
 
 fn main() {}

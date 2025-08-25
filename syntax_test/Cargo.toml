@@ -1,0 +1,10 @@
+[package]
+name = "syntax_test"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+cite = { path = "../cite/cite" }
+cite-core = { path = "../cite/core" }

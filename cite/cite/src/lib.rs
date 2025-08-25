@@ -7,18 +7,57 @@ use syn::{
 mod mock;
 
 
+/// Helper macro for creating "same" mock sources
+/// 
+/// Usage: `same!("content")`
+#[proc_macro]
+pub fn same(input: TokenStream) -> TokenStream {
+    let content = parse_macro_input!(input as syn::LitStr);
+    let content_value = content.value();
+    quote! {
+        ::cite_core::mock::MockSource::same(#content_value.to_string())
+    }.into()
+}
+
+/// Helper macro for creating "changed" mock sources
+/// 
+/// Usage: `changed!("old", "new")`
+#[proc_macro]
+pub fn changed(input: TokenStream) -> TokenStream {
+    let input_copy = input.clone();
+    let args = parse_macro_input!(input with Punctuated::<syn::LitStr, Token![,]>::parse_terminated);
+    if args.len() != 2 {
+        return syn::Error::new_spanned(
+            proc_macro2::TokenStream::from(input_copy), 
+            "changed! requires exactly two string arguments"
+        ).to_compile_error().into();
+    }
+    let old = &args[0];
+    let new = &args[1];
+    let old_value = old.value();
+    let new_value = new.value();
+    quote! {
+        ::cite_core::mock::MockSource::changed(#old_value.to_string(), #new_value.to_string())
+    }.into()
+}
+
+/// Helper macro for creating mock source expressions
+/// 
+/// Usage: `mock!(same!("content"))` or `mock!(changed!("old", "new"))`
+#[proc_macro]
+pub fn mock(input: TokenStream) -> TokenStream {
+    // The input should be the result of same!() or changed!() macros
+    // We just pass it through since it's already the correct MockSource expression
+    input
+}
+
 /// The main `#[cite]` attribute macro
 /// 
-/// Supports struct reconstruction syntax like:
-/// - `#[cite(MockSource::same("content"))]`
-/// - `#[cite(MockSource::same("content"), reason = "why this is important")]`
-/// - `#[cite(MockSource::same("content"), level = "WARN", annotation = "ANY")]`
-/// 
-/// Supports macro-style syntax like:
-/// - `#[cite(mock(same("content")))]`
-/// - `#[cite(mock(changed("a", "b")))]`
-/// - `#[cite(mock(same("content"), reason = "why this is important"))]`
-/// - `#[cite(mock(changed("a", "b"), level = "WARN", annotation = "ANY"))]`
+/// Supports macro-style syntax:
+/// - `#[cite(mock!(same!("content")))]`
+/// - `#[cite(mock!(changed!("a", "b")))]`
+/// - `#[cite(mock!(same!("content")), reason = "why this is important")]`
+/// - `#[cite(mock!(changed!("a", "b")), level = "WARN", annotation = "ANY")]`
 #[proc_macro_attribute]
 pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
     // Parse as a list of expressions separated by commas
