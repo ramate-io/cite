@@ -4,7 +4,7 @@ resolver = "2"
 
 members = [
 
-  "util/cite/*",
+  "cite/*",
   
 ]
 
@@ -64,11 +64,11 @@ scraper = "0.20"
 similar = "2.0"
  
 # internal
-cite-util-core = { path = "util/cite/core" }
-cite-util-cache = { path = "util/cite/cache" }
-cite-util-hypertext = { path = "util/cite/hypertext" }
-cite-util-macro = { path = "util/cite/macro" }
-cite-util = { path = "util/cite/cite" }
+cite-core = { path = "cite/core" }
+cite-cache = { path = "cite/cache" }
+cite-hypertext = { path = "cite/hypertext" }
+cite-macro = { path = "cite/macro" }
+cite = { path = "cite/cite" }
 
 [workspace.lints.clippy]
 debug_assert_with_mut_call = "deny"

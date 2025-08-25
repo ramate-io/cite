@@ -148,61 +148,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "cite-util"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "cite-util-core",
- "cite-util-macro",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "cite-util-cache"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "cite-util-core",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "cite-util-core"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "tempfile",
-]
-
-[[package]]
-name = "cite-util-hypertext"
+name = "cite"
 version = "0.0.1"
 dependencies = [
  "anyhow",
  "chrono",
- "cite-util-cache",
- "cite-util-core",
- "regex",
- "reqwest",
- "scraper",
- "serde",
- "serde_json",
- "similar",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "cite-util-macro"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "chrono",
- "cite-util-core",
+ "cite-cache",
+ "cite-core",
+ "cite-hypertext",
  "proc-macro2",
  "quote",
  "regex",
@@ -217,11 +170,51 @@ dependencies = [
 ]
 
 [[package]]
-name = "cite-util-test"
+name = "cite-cache"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "cite-util",
+ "cite-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "cite-core"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "cite-hypertext"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "cite-cache",
+ "cite-core",
+ "regex",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "similar",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "cite-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
+ "cite-core",
  "thiserror",
  "trybuild",
 ]
