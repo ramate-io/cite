@@ -1,14 +1,30 @@
 pub mod mock;
 pub mod behavior;
+pub mod cache;
+pub mod id;
 
+pub use id::Id;
 pub use behavior::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
-pub use mock::{StaticMockSource, mock_same, mock_changed, mock_source};
+pub use mock::{MockSource, mock_source_same, mock_source_changed};
+pub use cache::{CacheableReferenced, CacheableCurrent, CacheBuilder, Cache, CacheError, CacheBuilderError, CacheBehavior};
 
 /// Errors thrown by the [Source].
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
 	#[error("Source internal error: {0}")]
 	Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
+	
+	#[error("Network error: {0}")]
+	Network(String),
+	
+	#[error("Cache error: {0}")]
+	Cache(String),
+	
+	#[error("Content parsing error: {0}")]
+	ContentParsing(String),
+	
+	#[error("External dependency error: {0}")]
+	ExternalDependency(String),
 }
 
 /// [Diff] is a trait that contains information as to the diff between two [Content] types.
@@ -42,7 +58,19 @@ pub trait Current<R: Referenced, D: Diff>: Content {
 
 /// [Source] is a trait that allows for the creation of a [Content] type.
 pub trait Source<R: Referenced, C: Current<R, D>, D: Diff> {
-    fn get(&self) -> Result<Comparison<R, C, D>, SourceError>;
+
+    fn id(&self) -> &Id;
+
+    fn get_referenced(&self) -> Result<R, SourceError>;
+
+    fn get_current(&self) -> Result<C, SourceError>;
+
+    fn get(&self) -> Result<Comparison<R, C, D>, SourceError> {
+        let referenced = self.get_referenced()?;
+        let current = self.get_current()?;
+        let diff = current.diff(&referenced)?;
+        Ok(Comparison::new(referenced, current, diff))
+    }
 }
 
 /// [Comparison] is the result of getting a source. 
