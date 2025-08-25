@@ -1,6 +1,7 @@
 // Test that MockSource::changed() with ERROR level fails compilation
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 #[cite(MockSource::changed("old content", "new content"), level = "ERROR")]
 fn function_that_should_fail_compilation() {

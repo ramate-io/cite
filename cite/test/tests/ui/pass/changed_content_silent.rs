@@ -1,6 +1,7 @@
 // Test that MockSource::changed() with SILENT level compiles
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 #[cite(MockSource::changed("old content", "new content"), level = "SILENT")]
 fn function_with_silent_diff() {

@@ -1,6 +1,7 @@
 // Test that mock sources with diffs compile but can show diff information
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 // This should compile successfully (content is the same)
 #[cite(MockSource::same("unchanged content"))]

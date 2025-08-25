@@ -1,6 +1,7 @@
 // Test that demonstrates behavior-driven validation (without environment variables)
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 // Test different local level overrides
 #[cite(MockSource::changed("old", "new"), level = "SILENT")]

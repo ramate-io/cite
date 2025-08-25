@@ -1,6 +1,7 @@
 // Test that citations on truly invalid targets fail to compile
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 // This should fail - can't cite a const item
 #[cite(MockSource::same("content"))]

@@ -1,6 +1,7 @@
 // Test that modules can be cited
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 #[cite(MockSource::same("module content"))]
 mod test_module {

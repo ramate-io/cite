@@ -1,6 +1,7 @@
 // Test that citation attributes compile successfully
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 #[cite(MockSource::same("content"), reason = "This is why we need this reference")]
 fn function_with_reason() {}

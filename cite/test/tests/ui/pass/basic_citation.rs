@@ -1,6 +1,7 @@
 // Test that basic citation syntax compiles successfully
 
-use cite_util::{cite, mock::MockSource};
+use cite::cite;
+use cite_core::mock::MockSource;
 
 #[cite(MockSource::same("test content"))]
 fn test_function() {
