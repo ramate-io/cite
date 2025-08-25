@@ -2,11 +2,13 @@ pub mod mock;
 pub mod behavior;
 pub mod cache;
 pub mod id;
+pub mod hypertext;
 
 pub use id::Id;
 pub use behavior::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
 pub use mock::{MockSource, mock_source_same, mock_source_changed};
 pub use cache::{CacheableReferenced, CacheableCurrent, CacheBuilder, Cache, CacheError, CacheBuilderError, CacheBehavior};
+pub use hypertext::{HypertextMatch, MatchExpression, SourceUrl, ReferencedHypertext, CurrentHypertext, HypertextDiff};
 
 /// Errors thrown by the [Source].
 #[derive(Debug, thiserror::Error)]
