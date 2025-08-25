@@ -1,27 +1,22 @@
 use std::path::PathBuf;
 use crate::{Source, SourceError, Comparison,  Referenced, Current, Diff};
-use serde::{Serialize, Deserialize};
 use crate::Id;
 
 /// A cachable reference is serializable and deserializable
 /// 
 /// The reference only needs to read from the cache file.
-pub trait CacheableReferenced: Referenced + Serialize + for<'de> Deserialize<'de> {
+pub trait CacheableReferenced: Referenced + Sized {
 
-    fn from_cached_buffer(buffer: Vec<u8>) -> Result<Self, CacheError> {
-        serde_json::from_slice(&buffer).map_err(CacheError::Deserialize)
-    }
+    fn from_cached_buffer(buffer: Vec<u8>) -> Result<Self, CacheError>;
 
 }
 
 /// A cacheable current is serializable and deserializable
 /// 
 /// The current needs to be able to write to the cache file.
-pub trait CacheableCurrent<R: CacheableReferenced, D: Diff> : Current<R, D> + Serialize + for<'de> Deserialize<'de> {
+pub trait CacheableCurrent<R: CacheableReferenced, D: Diff> : Current<R, D> + Sized {
 
-    fn to_cached_buffer(&self) -> Result<Vec<u8>, CacheError> {
-        serde_json::to_vec(self).map_err(CacheError::Serialize)
-    }
+    fn to_cached_buffer(&self) -> Result<Vec<u8>, CacheError>;
 }
 
 /// Errors thrown by the [CacheBuilder].
@@ -68,10 +63,10 @@ pub enum CacheError {
 	DeleteCacheFile(#[source] std::io::Error),
 
 	#[error("Failed to serialize cacheable: {0}")]
-	Serialize(#[source] serde_json::Error),
+	Serialize(#[source] Box<dyn std::error::Error + Send + Sync>),
 
 	#[error("Failed to deserialize cacheable: {0}")]
-	Deserialize(#[source] serde_json::Error),
+	Deserialize(#[source] Box<dyn std::error::Error + Send + Sync>),
 
 	#[error("Source error: {0}")]
 	SourceError(#[source] SourceError),
@@ -124,24 +119,38 @@ impl Cache {
     Ok(())
    }
 
+   /// Get a source with cache.
+   /// 
+   /// If the cache is ignored, the source is fetched via [Source::get] and the cache is filled with the current value.
+   /// 
+   /// If the cache is enabled, we first check if the source is in the cache.
+   /// If it is, we use the cached value.
+   /// If it is not, we fetch the source via [Source::get_referenced] and [Source::get_current] and fill the cache with the current value.
+   /// 
+   /// Note: this caching discprenacy between referenced and current means that a source that does not have a reference and current implementation that serialize to the same thing for the same content may always return a diff. 
    pub fn get_source_with_cache<S: Source<R, C, D>, R: CacheableReferenced, C: CacheableCurrent<R, D>, D: Diff>(&self, source: S, behavior: CacheBehavior) -> Result<Comparison<R, C, D>, CacheError> {
-        let comparison = match behavior {
+    match behavior {
             CacheBehavior::Ignored => {
                 let comparison = source.get().map_err(CacheError::SourceError)?;
-                comparison
+                self.set(source.id(), comparison.current())?;
+                Ok(comparison)
             }
             CacheBehavior::Enabled => {
-                let referenced = match self.get::<R>(source.id())? {
-                    Some(referenced) => referenced,
-                    None => source.get_referenced().map_err(CacheError::SourceError)?,
+                let (referenced, current) = match self.get::<R>(source.id())? {
+                    Some(referenced) => (referenced, source.get_current().map_err(CacheError::SourceError)?),
+                    None => {
+                        let referenced = source.get_referenced().map_err(CacheError::SourceError)?;
+                        let current = source.get_current().map_err(CacheError::SourceError)?;
+                        self.set(source.id(), &current)?;
+                        (referenced, current)
+                    }
                 };
-                let current = source.get_current().map_err(CacheError::SourceError)?;
                 let diff = current.diff(&referenced).map_err(CacheError::SourceError)?;
-                Comparison::new(referenced, current, diff)
+                let comparison = Comparison::new(referenced, current, diff);
+                Ok(comparison)
             }
-        };
-        self.set(source.id(), comparison.current())?;
-        Ok(comparison)  
+        }
+        
    }
 }
 
@@ -150,6 +159,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
     use crate::Content;
+    use serde::{Serialize, Deserialize};
 
     // Test implementations for CacheableReferenced and CacheableCurrent
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -159,7 +169,12 @@ mod tests {
 
     impl Content for TestReferenced {}
     impl Referenced for TestReferenced {}
-    impl CacheableReferenced for TestReferenced {}
+    impl CacheableReferenced for TestReferenced {
+        fn from_cached_buffer(buffer: Vec<u8>) -> Result<Self, CacheError> {
+            let content = String::from_utf8(buffer).map_err(|e| CacheError::Deserialize(e.into()))?;
+            Ok(Self { content })
+        }
+    }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestCurrent {
@@ -176,7 +191,13 @@ mod tests {
         }
     }
 
-    impl CacheableCurrent<TestReferenced, TestDiff> for TestCurrent {}
+    impl CacheableCurrent<TestReferenced, TestDiff> for TestCurrent {
+        fn to_cached_buffer(&self) -> Result<Vec<u8>, CacheError> {
+            // content to utf8
+            let buffer = self.content.as_bytes().to_vec();
+            Ok(buffer)
+        }
+    }
 
     #[derive(Debug, Clone, PartialEq)]
     struct TestDiff {
@@ -288,7 +309,8 @@ mod tests {
             content: "test content".to_string(),
         };
         
-        let serialized = serde_json::to_vec(&referenced)?;
+        // Simulate what would be cached (using the same format as TestCurrent)
+        let serialized = referenced.content.as_bytes().to_vec();
         let deserialized = TestReferenced::from_cached_buffer(serialized)?;
         
         assert_eq!(referenced, deserialized);
@@ -302,9 +324,12 @@ mod tests {
         };
         
         let buffer = current.to_cached_buffer()?;
-        let deserialized: TestCurrent = serde_json::from_slice(&buffer)?;
+        let deserialized_content = String::from_utf8(buffer.clone())?;
+        assert_eq!(current.content, deserialized_content);
         
-        assert_eq!(current, deserialized);
+        // Test round-trip through TestReferenced (since that's what gets cached)
+        let as_referenced = TestReferenced::from_cached_buffer(buffer)?;
+        assert_eq!(current.content, as_referenced.content);
         Ok(())
     }
 
@@ -373,6 +398,297 @@ mod tests {
         // Should still fetch fresh current content
         assert_eq!(result.current().content, "current content");
         assert!(result.diff().changed);
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_serialization_consistency() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        let id = Id::new("consistency-test".to_string());
+        let test_content = "unified test content";
+        
+        // Create both referenced and current with same content
+        let original_current = TestCurrent { content: test_content.to_string() };
+        let original_referenced = TestReferenced { content: test_content.to_string() };
+        
+        // Cache the current value
+        cache.set(&id, &original_current)?;
+        
+        // Retrieve as referenced (this is what the cache stores)
+        let cached_referenced = cache.get::<TestReferenced>(&id)?.expect("Should have cached value");
+        
+        // Verify that both serialization paths produce compatible results
+        assert_eq!(cached_referenced.content, original_current.content);
+        assert_eq!(cached_referenced.content, original_referenced.content);
+        
+        // Verify the actual serialization formats are compatible
+        let current_buffer = original_current.to_cached_buffer()?;
+        let referenced_from_buffer = TestReferenced::from_cached_buffer(current_buffer)?;
+        assert_eq!(referenced_from_buffer.content, original_current.content);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_workflow_complete() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        // Test 1: First access with no cache - should populate cache
+        let source1 = TestSource {
+            id: Id::new("workflow-test".to_string()),
+            referenced: TestReferenced { content: "original referenced".to_string() },
+            current: TestCurrent { content: "original current".to_string() },
+        };
+        
+        let result1 = cache.get_source_with_cache(source1, CacheBehavior::Enabled)?;
+        assert_eq!(result1.referenced().content, "original referenced");
+        assert_eq!(result1.current().content, "original current");
+        
+        // Test 2: Second access with cache - should use cached referenced, fresh current
+        let source2 = TestSource {
+            id: Id::new("workflow-test".to_string()),
+            referenced: TestReferenced { content: "NEW referenced".to_string() }, // This should be ignored
+            current: TestCurrent { content: "NEW current".to_string() },
+        };
+        
+        let result2 = cache.get_source_with_cache(source2, CacheBehavior::Enabled)?;
+        assert_eq!(result2.referenced().content, "original current"); // Uses cached value
+        assert_eq!(result2.current().content, "NEW current"); // Uses fresh value
+        assert!(result2.diff().changed); // Should show difference
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_ignored_populates_cache() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        let id = Id::new("ignored-population-test".to_string());
+        
+        // Verify cache is initially empty
+        assert!(cache.get::<TestReferenced>(&id)?.is_none());
+        
+        let source = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: "ref content".to_string() },
+            current: TestCurrent { content: "current content".to_string() },
+        };
+
+        // Use cache with Ignored behavior
+        let result = cache.get_source_with_cache(source, CacheBehavior::Ignored)?;
+        
+        // Verify the comparison result is correct
+        assert_eq!(result.referenced().content, "ref content");
+        assert_eq!(result.current().content, "current content");
+        assert!(result.diff().changed);
+        
+        // Verify that cache was populated with the CURRENT value
+        let cached_value = cache.get::<TestReferenced>(&id)?.expect("Cache should be populated");
+        assert_eq!(cached_value.content, "current content"); // Should be current, not referenced
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_enabled_no_cache_populates_with_current() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        let id = Id::new("enabled-no-cache-test".to_string());
+        
+        // Verify cache is initially empty
+        assert!(cache.get::<TestReferenced>(&id)?.is_none());
+        
+        let source = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: "original ref".to_string() },
+            current: TestCurrent { content: "original current".to_string() },
+        };
+
+        // Use cache with Enabled behavior (no existing cache)
+        let result = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        
+        // Should use the source's referenced and current values
+        assert_eq!(result.referenced().content, "original ref");
+        assert_eq!(result.current().content, "original current");
+        assert!(result.diff().changed);
+        
+        // Verify that cache was populated with the CURRENT value
+        let cached_value = cache.get::<TestReferenced>(&id)?.expect("Cache should be populated");
+        assert_eq!(cached_value.content, "original current"); // Should be current, not referenced
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_enabled_with_existing_cache_uses_cached_referenced() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        let id = Id::new("enabled-with-cache-test".to_string());
+        
+        // Pre-populate cache
+        let cached_current = TestCurrent { content: "previously cached content".to_string() };
+        cache.set(&id, &cached_current)?;
+        
+        // Verify cache contains our value
+        let cached_referenced = cache.get::<TestReferenced>(&id)?.expect("Cache should contain value");
+        assert_eq!(cached_referenced.content, "previously cached content");
+        
+        let source = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: "NEW referenced".to_string() }, // Should be ignored
+            current: TestCurrent { content: "NEW current".to_string() },
+        };
+
+        // Use cache with Enabled behavior (with existing cache)
+        let result = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        
+        // Should use cached value for referenced, fresh current
+        assert_eq!(result.referenced().content, "previously cached content"); // From cache
+        assert_eq!(result.current().content, "NEW current"); // Fresh from source
+        assert!(result.diff().changed);
+        
+        // Cache should NOT be updated when using existing cache
+        let still_cached = cache.get::<TestReferenced>(&id)?.expect("Cache should still contain original");
+        assert_eq!(still_cached.content, "previously cached content"); // Unchanged
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_discrepancy_serialization_issue() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        let id = Id::new("discrepancy-test".to_string());
+        let identical_content = "identical content";
+        
+        // Create source where referenced and current have identical content
+        let source = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: identical_content.to_string() },
+            current: TestCurrent { content: identical_content.to_string() },
+        };
+
+        // First call with Enabled (no cache) - should populate cache with current
+        let result1 = cache.get_source_with_cache(source, CacheBehavior::Enabled)?;
+        assert_eq!(result1.referenced().content, identical_content);
+        assert_eq!(result1.current().content, identical_content);
+        assert!(!result1.diff().changed); // Should be identical, no diff
+        
+        // Now create a NEW source with the SAME content
+        let source2 = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: identical_content.to_string() },
+            current: TestCurrent { content: identical_content.to_string() },
+        };
+
+        // Second call with Enabled (with cache) - demonstrates the discrepancy
+        let result2 = cache.get_source_with_cache(source2, CacheBehavior::Enabled)?;
+        
+        // The "discrepancy" mentioned in docs:
+        // - referenced comes from cache (which was serialized as current)
+        // - current comes fresh from source
+        // - Even though content is identical, serialization round-trip might cause differences
+        assert_eq!(result2.referenced().content, identical_content); // From cache
+        assert_eq!(result2.current().content, identical_content); // Fresh from source
+        
+        // In our case, both use the same serialization format (UTF-8 strings),
+        // so they should still be equal and no diff should be detected
+        assert!(!result2.diff().changed);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_behavior_comparison() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        // Test both behaviors with the same source data
+        let create_source = |id_suffix: &str| TestSource {
+            id: Id::new(format!("comparison-{}", id_suffix)),
+            referenced: TestReferenced { content: "ref data".to_string() },
+            current: TestCurrent { content: "current data".to_string() },
+        };
+        
+        // Test Ignored behavior
+        let source_ignored = create_source("ignored");
+        let id_ignored = source_ignored.id.clone();
+        let result_ignored = cache.get_source_with_cache(source_ignored, CacheBehavior::Ignored)?;
+        
+        // Test Enabled behavior (no cache)
+        let source_enabled = create_source("enabled");
+        let id_enabled = source_enabled.id.clone();
+        let result_enabled = cache.get_source_with_cache(source_enabled, CacheBehavior::Enabled)?;
+        
+        // Both should produce the same comparison results
+        assert_eq!(result_ignored.referenced().content, result_enabled.referenced().content);
+        assert_eq!(result_ignored.current().content, result_enabled.current().content);
+        assert_eq!(result_ignored.diff().changed, result_enabled.diff().changed);
+        
+        // Both should have populated cache with current content
+        let cached_ignored = cache.get::<TestReferenced>(&id_ignored)?.expect("Should be cached");
+        let cached_enabled = cache.get::<TestReferenced>(&id_enabled)?.expect("Should be cached");
+        
+        assert_eq!(cached_ignored.content, "current data");
+        assert_eq!(cached_enabled.content, "current data");
+        assert_eq!(cached_ignored.content, cached_enabled.content);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_multiple_updates_enabled_behavior() -> Result<(), anyhow::Error> {
+        let temp_dir = TempDir::new()?;
+        let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), PathBuf::from("cache"));
+        let cache = builder.build()?;
+        
+        let id = Id::new("multiple-updates".to_string());
+        
+        // First source - will populate cache
+        let source1 = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: "first ref".to_string() },
+            current: TestCurrent { content: "first current".to_string() },
+        };
+        
+        let result1 = cache.get_source_with_cache(source1, CacheBehavior::Enabled)?;
+        assert_eq!(result1.referenced().content, "first ref");
+        assert_eq!(result1.current().content, "first current");
+        
+        // Verify cache was populated
+        let cached1 = cache.get::<TestReferenced>(&id)?.expect("Should be cached");
+        assert_eq!(cached1.content, "first current");
+        
+        // Second source - will use cached referenced, fresh current
+        let source2 = TestSource {
+            id: id.clone(),
+            referenced: TestReferenced { content: "second ref".to_string() }, // Ignored
+            current: TestCurrent { content: "second current".to_string() },
+        };
+        
+        let result2 = cache.get_source_with_cache(source2, CacheBehavior::Enabled)?;
+        assert_eq!(result2.referenced().content, "first current"); // From cache!
+        assert_eq!(result2.current().content, "second current"); // Fresh
+        assert!(result2.diff().changed);
+        
+        // Cache should be unchanged (not updated on cache hit)
+        let cached2 = cache.get::<TestReferenced>(&id)?.expect("Should still be cached");
+        assert_eq!(cached2.content, "first current"); // Still original cached value
+        
         Ok(())
     }
 }
