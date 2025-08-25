@@ -48,7 +48,7 @@ pub trait Source {
 - Returns a `Comparison` that can be validated against behavior rules
 - Error handling through `SourceError` for consistent error reporting
 
-### MockSource Implementation
+### `MockSource` Implementation
 
 Primary implementation for testing and development:
 

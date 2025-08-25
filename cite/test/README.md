@@ -107,7 +107,7 @@ fn test_mock_source_diffs() {
 
 The test suite aims to cover:
 - **All syntax variations**: Every supported citation syntax
-- **All item types**: Functions, structs, traits, impl blocks, modules
+- **All item types**: Functions, structs, traits, `impl` blocks, modules
 - **All behavior modes**: ERROR, WARN, SILENT levels
 - **All error conditions**: Invalid syntax, missing sources, wrong targets
 
