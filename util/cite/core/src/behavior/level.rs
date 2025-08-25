@@ -10,23 +10,17 @@ pub enum CitationLevel {
 }
 
 impl CitationLevel {
-    /// Parse from environment variable or string
-    pub fn from_str(s: &str) -> Result<Self, String> {
-        match s.to_lowercase().as_str() {
-            "error" => Ok(CitationLevel::Error),
-            "warn" => Ok(CitationLevel::Warn),
-            "silent" => Ok(CitationLevel::Silent),
-            _ => Err(format!("Invalid citation level: '{}'. Valid values: error, warn, silent", s)),
+    /// Parse from string
+    pub fn from_str(s: &str) -> Result<Self, &'static str> {
+        match s {
+            "error" | "Error" | "ERROR" => Ok(CitationLevel::Error),
+            "warn" | "Warn" | "WARN" => Ok(CitationLevel::Warn),
+            "silent" | "Silent" | "SILENT" => Ok(CitationLevel::Silent),
+            _ => Err("Invalid citation level. Valid values: error, warn, silent"),
         }
     }
     
-    /// Get from CITE_LEVEL environment variable or return default
-    pub fn from_env() -> Self {
-        std::env::var("CITE_LEVEL")
-            .ok()
-            .and_then(|s| Self::from_str(&s).ok())
-            .unwrap_or(CitationLevel::Warn) // Default to warn
-    }
+
     
     /// Convert to string representation
     pub fn as_str(&self) -> &'static str {
@@ -54,8 +48,8 @@ impl Default for CitationLevel {
     }
 }
 
-impl std::fmt::Display for CitationLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for CitationLevel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }

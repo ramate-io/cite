@@ -1,128 +1,151 @@
-use crate::{Content, Referenced, Current, Diff, Source, Comparison, SourceError, Id};
+//! Mock source implementation for testing citations
+//! 
+//! This module provides a simple mock source that works in no_std environments
+//! and is useful for testing the citation system.
 
-// ==============================================================================
-// Concrete Implementations for Testing/Mock Usage
-// ==============================================================================
+use crate::{Source, SourceError, Referenced, Current, Diff, Content, Id};
 
-/// Simple string-based content implementation
+/// Simple mock content that works in no_std
 #[derive(Debug, Clone, PartialEq)]
-pub struct StringContent(pub String);
-
-impl Content for StringContent {}
-
-/// Referenced string content - what was originally cited
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReferencedString(pub String);
-
-impl Content for ReferencedString {}
-impl Referenced for ReferencedString {}
-
-/// Current string content - what's currently available
-#[derive(Debug, Clone, PartialEq)]
-pub struct CurrentString(pub String);
-
-impl Content for CurrentString {}
-
-/// Simple string diff - just tracks if strings are different
-#[derive(Debug, Clone, PartialEq)]
-pub struct StringDiff {
-    pub has_changes: bool,
-    pub referenced: String,
-    pub current: String,
+pub struct MockContent {
+    data: [u8; 128],
+    len: usize,
 }
 
-impl Diff for StringDiff {
-    fn is_empty(&self) -> bool {
-        !self.has_changes
+impl Content for MockContent {}
+impl Referenced for MockContent {}
+
+impl MockContent {
+    pub fn new(data: &str) -> Self {
+        let bytes = data.as_bytes();
+        let mut buffer = [0u8; 128];
+        let len = bytes.len().min(128);
+        buffer[..len].copy_from_slice(&bytes[..len]);
+        Self { data: buffer, len }
+    }
+    
+    pub fn data(&self) -> &str {
+        core::str::from_utf8(&self.data[..self.len]).unwrap_or("")
     }
 }
 
-impl Current<ReferencedString, StringDiff> for CurrentString {
-    fn diff(&self, other: &ReferencedString) -> Result<StringDiff, SourceError> {
-        Ok(StringDiff {
-            has_changes: self.0 != other.0,
-            referenced: other.0.clone(),
-            current: self.0.clone(),
+/// Mock diff implementation
+#[derive(Debug, Clone, PartialEq)]
+pub struct MockDiff {
+    pub changed: bool,
+}
+
+impl Diff for MockDiff {
+    fn is_empty(&self) -> bool {
+        !self.changed
+    }
+}
+
+/// Mock current content
+#[derive(Debug, Clone, PartialEq)]
+pub struct MockCurrentContent {
+    data: [u8; 128],
+    len: usize,
+}
+
+impl Content for MockCurrentContent {}
+
+impl Current<MockContent, MockDiff> for MockCurrentContent {
+    fn diff(&self, referenced: &MockContent) -> Result<MockDiff, SourceError> {
+        Ok(MockDiff {
+            changed: self.data() != referenced.data(),
         })
     }
 }
 
-/// Mock source for testing - compares a static "referenced" string with a "current" string
-#[derive(Debug, Clone)]
+impl MockCurrentContent {
+    pub fn new(data: &str) -> Self {
+        let bytes = data.as_bytes();
+        let mut buffer = [0u8; 128];
+        let len = bytes.len().min(128);
+        buffer[..len].copy_from_slice(&bytes[..len]);
+        Self { data: buffer, len }
+    }
+    
+    pub fn data(&self) -> &str {
+        core::str::from_utf8(&self.data[..self.len]).unwrap_or("")
+    }
+}
+
+/// Mock source for testing
 pub struct MockSource {
-    pub id: Id,
-    pub referenced_content: String,
-    pub current_content: String,
+    id: Id,
+    referenced: MockContent,
+    current: MockCurrentContent,
 }
 
 impl MockSource {
-    /// Create a new MockSource and return a static reference for use in macros
-    pub fn new(referenced: &'static str, current: &'static str) -> Self {
+    pub fn same(content: &str) -> Self {
+        let id = Id::new(content);
         Self {
-            id: Id::new(format!("mock_source_{}", referenced)),
-            referenced_content: referenced.to_string(),
-            current_content: current.to_string(),
+            id,
+            referenced: MockContent::new(content),
+            current: MockCurrentContent::new(content),
         }
     }
     
-    /// Helper for when referenced and current are the same (no diff)
-    /// Returns &'static Self for use in macros
-    pub fn same(content: &'static str) -> Self {
-        Self::new(content, content)
-    }
-    
-    /// Helper for when content has changed
-    /// Returns &'static Self for use in macros
-    pub fn changed(referenced: &'static str, current: &'static str) -> Self {
-        Self::new(referenced, current)
+    pub fn changed(referenced: &str, current: &str) -> Self {
+        let id = Id::new(referenced);
+        Self {
+            id,
+            referenced: MockContent::new(referenced),
+            current: MockCurrentContent::new(current),
+        }
     }
 }
 
-impl Source<ReferencedString, CurrentString, StringDiff> for MockSource {
+impl Source<MockContent, MockCurrentContent, MockDiff> for MockSource {
     fn id(&self) -> &Id {
         &self.id
     }
-
-    fn get_referenced(&self) -> Result<ReferencedString, SourceError> {
-        Ok(ReferencedString(self.referenced_content.clone()))
+    
+    fn get_referenced(&self) -> Result<MockContent, SourceError> {
+        Ok(self.referenced.clone())
     }
-
-    fn get_current(&self) -> Result<CurrentString, SourceError> {
-        Ok(CurrentString(self.current_content.clone()))
+    
+    fn get_current(&self) -> Result<MockCurrentContent, SourceError> {
+        Ok(self.current.clone())
     }
+}
 
-    fn get(&self) -> Result<Comparison<ReferencedString, CurrentString, StringDiff>, SourceError> {
-        let referenced = ReferencedString(self.referenced_content.clone());
-        let current = CurrentString(self.current_content.clone());
-        let diff = current.diff(&referenced)?;
+/// Helper function for creating a mock source with same content
+pub fn mock_source_same(content: &str) -> MockSource {
+    MockSource::same(content)
+}
+
+/// Helper function for creating a mock source with changed content
+pub fn mock_source_changed(referenced: &str, current: &str) -> MockSource {
+    MockSource::changed(referenced, current)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_mock_source_same() {
+        let source = MockSource::same("test content");
+        let comparison = source.get().unwrap();
         
-        Ok(Comparison::new(referenced, current, diff))
+        assert_eq!(comparison.referenced().data(), "test content");
+        assert_eq!(comparison.current().data(), "test content");
+        assert!(!comparison.diff().changed);
+        assert!(comparison.is_same());
     }
-}
-
-// ==============================================================================
-// Macro Pattern Matching Support
-// ==============================================================================
-
-/// Helper functions for creating MockSource instances from parsed arguments
-/// 
-/// These functions are used by the procedural macro to construct MockSource
-/// instances from parsed string literals.
-
-/// Create a MockSource with the same referenced and current content
-pub fn mock_source_same(content: String) -> MockSource {
-    MockSource {
-        id: Id::new(format!("mock_source_{}", content)),
-        referenced_content: content.clone(),
-        current_content: content,
-    }
-}
-
-/// Create a MockSource with different referenced and current content
-pub fn mock_source_changed(referenced: String, current: String) -> MockSource {
-    MockSource {
-        id: Id::new(format!("mock_source_{}", referenced)),
-        referenced_content: referenced,
-        current_content: current,
+    
+    #[test]
+    fn test_mock_source_changed() {
+        let source = MockSource::changed("old content", "new content");
+        let comparison = source.get().unwrap();
+        
+        assert_eq!(comparison.referenced().data(), "old content");
+        assert_eq!(comparison.current().data(), "new content");
+        assert!(comparison.diff().changed);
+        assert!(!comparison.is_same());
     }
 }

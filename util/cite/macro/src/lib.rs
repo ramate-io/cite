@@ -5,6 +5,7 @@ use syn::{
     Lit, Result, punctuated::Punctuated, Token,
 };
 mod mock;
+pub mod hypertext;
 
 /// The main `#[cite]` attribute macro
 /// 

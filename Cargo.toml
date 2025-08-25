@@ -65,6 +65,8 @@ similar = "2.0"
  
 # internal
 cite-util-core = { path = "util/cite/core" }
+cite-util-cache = { path = "util/cite/cache" }
+cite-util-hypertext = { path = "util/cite/hypertext" }
 cite-util-macro = { path = "util/cite/macro" }
 cite-util = { path = "util/cite/cite" }
 

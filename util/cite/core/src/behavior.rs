@@ -23,14 +23,7 @@ impl CitationBehavior {
         Self { level, annotation, global }
     }
     
-    /// Load configuration from environment variables
-    pub fn from_env() -> Self {
-        Self {
-            level: CitationLevel::from_env(),
-            annotation: CitationAnnotation::from_env(),
-            global: CitationGlobal::from_env(),
-        }
-    }
+
     
     /// Resolve the effective citation level, considering local overrides
     pub fn effective_level(&self, local_level: Option<CitationLevel>) -> CitationLevel {

@@ -1,29 +1,23 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Id(String);
+pub struct Id {
+    data: [u8; 64],
+    len: usize,
+}
 
 impl Id {
-    pub fn new(id: String) -> Self {
-        Self(id)
+    pub fn new(id: &str) -> Self {
+        let bytes = id.as_bytes();
+        let mut data = [0u8; 64];
+        let len = bytes.len().min(64);
+        data[..len].copy_from_slice(&bytes[..len]);
+        Self { data, len }
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub fn as_string(&self) -> String {
-        self.0.clone()
+        core::str::from_utf8(&self.data[..self.len]).unwrap_or("")
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_bytes()
+        &self.data[..self.len]
     }
-    
-    pub fn as_string_lossy(&self) -> String {
-        self.0.clone()
-    }
-
-    pub fn as_string_lossy_mut(&mut self) -> String {
-        self.0.clone()
-    }
-
 }

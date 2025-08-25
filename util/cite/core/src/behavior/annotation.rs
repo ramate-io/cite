@@ -8,22 +8,16 @@ pub enum CitationAnnotation {
 }
 
 impl CitationAnnotation {
-    /// Parse from environment variable or string
-    pub fn from_str(s: &str) -> Result<Self, String> {
-        match s.to_lowercase().as_str() {
-            "footnote" => Ok(CitationAnnotation::Footnote),
-            "any" => Ok(CitationAnnotation::Any),
-            _ => Err(format!("Invalid citation annotation: '{}'. Valid values: footnote, any", s)),
+    /// Parse from string
+    pub fn from_str(s: &str) -> Result<Self, &'static str> {
+        match s {
+            "footnote" | "Footnote" | "FOOTNOTE" => Ok(CitationAnnotation::Footnote),
+            "any" | "Any" | "ANY" => Ok(CitationAnnotation::Any),
+            _ => Err("Invalid citation annotation. Valid values: footnote, any"),
         }
     }
     
-    /// Get from CITE_ANNOTATION environment variable or return default
-    pub fn from_env() -> Self {
-        std::env::var("CITE_ANNOTATION")
-            .ok()
-            .and_then(|s| Self::from_str(&s).ok())
-            .unwrap_or(CitationAnnotation::Any) // Default to any
-    }
+
     
     /// Convert to string representation
     pub fn as_str(&self) -> &'static str {
@@ -45,8 +39,8 @@ impl Default for CitationAnnotation {
     }
 }
 
-impl std::fmt::Display for CitationAnnotation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for CitationAnnotation {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }

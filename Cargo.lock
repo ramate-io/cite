@@ -159,11 +159,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-util-cache"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite-util-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "cite-util-core"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "tempfile",
+]
+
+[[package]]
+name = "cite-util-hypertext"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
  "chrono",
+ "cite-util-cache",
+ "cite-util-core",
  "regex",
  "reqwest",
  "scraper",
@@ -178,10 +200,17 @@ dependencies = [
 name = "cite-util-macro"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
+ "chrono",
  "cite-util-core",
  "proc-macro2",
  "quote",
+ "regex",
+ "reqwest",
+ "scraper",
  "serde",
+ "serde_json",
+ "similar",
  "syn",
  "tempfile",
  "thiserror",

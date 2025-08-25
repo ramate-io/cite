@@ -8,22 +8,16 @@ pub enum CitationGlobal {
 }
 
 impl CitationGlobal {
-    /// Parse from environment variable or string
-    pub fn from_str(s: &str) -> Result<Self, String> {
-        match s.to_lowercase().as_str() {
-            "strict" => Ok(CitationGlobal::Strict),
-            "lenient" => Ok(CitationGlobal::Lenient),
-            _ => Err(format!("Invalid citation global mode: '{}'. Valid values: strict, lenient", s)),
+    /// Parse from string
+    pub fn from_str(s: &str) -> Result<Self, &'static str> {
+        match s {
+            "strict" | "Strict" | "STRICT" => Ok(CitationGlobal::Strict),
+            "lenient" | "Lenient" | "LENIENT" => Ok(CitationGlobal::Lenient),
+            _ => Err("Invalid citation global mode. Valid values: strict, lenient"),
         }
     }
     
-    /// Get from CITE_GLOBAL environment variable or return default
-    pub fn from_env() -> Self {
-        std::env::var("CITE_GLOBAL")
-            .ok()
-            .and_then(|s| Self::from_str(&s).ok())
-            .unwrap_or(CitationGlobal::Lenient) // Default to lenient
-    }
+
     
     /// Convert to string representation
     pub fn as_str(&self) -> &'static str {
@@ -45,8 +39,8 @@ impl Default for CitationGlobal {
     }
 }
 
-impl std::fmt::Display for CitationGlobal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for CitationGlobal {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.as_str())
     }
 }

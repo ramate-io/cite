@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use crate::{Source, SourceError, Comparison, Referenced, Current, Diff, Content, Id};
-use crate::{CacheableReferenced, CacheableCurrent, CacheError};
+use cite_util_core::{Source, SourceError, Comparison, Referenced, Current, Diff, Content, Id};
+use cite_util_core::{CacheableReferenced, CacheableCurrent, CacheError};
+use cite_util_cache::{Cache, CacheBuilder, CacheBehavior};
 use serde::{Serialize, Deserialize};
 use regex::Regex;
 use scraper::{Html, Selector};
