@@ -1,5 +1,5 @@
 [package]
-name = "cite-util"
+name = "cite-util-test"
 version = { workspace = true }
 edition  = { workspace = true }
 license  = { workspace = true }
@@ -12,11 +12,10 @@ rust-version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 thiserror = { workspace = true }
-cite-util-core = { workspace = true }
-cite-util-macro = { workspace = true }
+cite-util = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+trybuild = "1.0"
 
 [lints]
 workspace = true
