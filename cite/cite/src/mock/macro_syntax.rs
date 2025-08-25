@@ -1,5 +1,5 @@
 use syn::{Expr, Lit};
-use cite_core::mock::{MockSource, mock_source_same, mock_source_changed};
+use cite_core::mock::MockSource;
 
 /// Parse the macro-style syntax: mock(changed("a", "b")) and mock(same("content"))
 /// 
@@ -39,7 +39,7 @@ fn parse_changed_args(args: &syn::punctuated::Punctuated<Expr, syn::Token![,]>) 
     let args: Vec<_> = args.iter().collect();
     if let (Expr::Lit(lit1), Expr::Lit(lit2)) = (args[0], args[1]) {
         if let (Lit::Str(str1), Lit::Str(str2)) = (&lit1.lit, &lit2.lit) {
-            return Some(mock_source_changed(str1.value(), str2.value()));
+            return Some(MockSource::changed(str1.value(), str2.value()));
         }
     }
     None
@@ -49,7 +49,7 @@ fn parse_changed_args(args: &syn::punctuated::Punctuated<Expr, syn::Token![,]>) 
 fn parse_same_args(args: &syn::punctuated::Punctuated<Expr, syn::Token![,]>) -> Option<MockSource> {
     if let Expr::Lit(lit) = &args[0] {
         if let Lit::Str(str_lit) = &lit.lit {
-            return Some(mock_source_same(str_lit.value()));
+            return Some(MockSource::same(str_lit.value()));
         }
     }
     None

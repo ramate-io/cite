@@ -3,7 +3,7 @@
 use cite::{cite, mock, same};
 
 // This should fail - can't cite a const item
-#[cite(mock!(same!("content")))]
+#[cite(mock(same("content")))]
 const INVALID_TARGET: i32 = 42;
 
 fn main() {}

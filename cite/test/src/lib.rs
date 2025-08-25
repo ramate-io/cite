@@ -1,40 +1,40 @@
 #[cfg(test)]
 pub mod tests {
-    use cite::{cite, mock, same, changed};
+    use cite::cite;
     use cite_core::{Source, mock_source_same, mock_source_changed};
 
     // Test basic citation on a function
-    #[cite(mock!(same!("test content")))]
+    #[cite(mock(same("test content")))]
     fn test_function_with_citation() {
         println!("This function has a citation");
     }
 
     // Test citation with reason
-    #[cite(mock!(same!("important content")), reason = "This demonstrates why we need this reference")]
+    #[cite(mock(same("important content")), reason = "This demonstrates why we need this reference")]
     fn test_function_with_reason() {
         println!("This function has a citation with a reason");
     }
 
     // Test citation with multiple attributes
-    #[cite(mock!(same!("complex content")), reason = "Complex reasoning", level = "WARN")]
+    #[cite(mock(same("complex content")), reason = "Complex reasoning", level = "WARN")]
     fn test_function_with_multiple_attributes() {
         println!("This function has multiple citation attributes");
     }
 
     // Test citation on a struct
-    #[cite(mock!(same!("struct content")))]
+    #[cite(mock(same("struct content")))]
     struct TestStruct {
         field: String,
     }
 
     // Test citation on a trait
-    #[cite(mock!(same!("trait content")))]
+    #[cite(mock(same("trait content")))]
     pub trait TestTrait {
         fn do_something(&self);
     }
 
     // Test citation on impl block
-    #[cite(mock!(same!("impl content")))]
+    #[cite(mock(same("impl content")))]
     impl TestStruct {
         fn new(field: String) -> Self {
             Self { field }
@@ -56,7 +56,7 @@ pub mod tests {
     #[test]
     fn test_citation_with_changed_content() {
         // This should trigger a compile-time warning/error in debug mode
-        #[cite(mock!(changed!("original content", "modified content")))]
+        #[cite(mock(changed("original content", "modified content")))]
         fn function_with_changed_citation() {
             println!("This function references content that has changed");
         }
@@ -66,8 +66,8 @@ pub mod tests {
     }
 
     // Test multiple citations on the same item
-    #[cite(mock!(same!("first reference")))]
-    #[cite(mock!(same!("second reference")))]
+    #[cite(mock(same("first reference")))]
+    #[cite(mock(same("second reference")))]
     fn function_with_multiple_citations() {
         println!("This function has multiple citations");
     }

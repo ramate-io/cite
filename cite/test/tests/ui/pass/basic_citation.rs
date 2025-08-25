@@ -2,22 +2,22 @@
 
 use cite::{cite, mock, same};
 
-#[cite(mock!(same!("test content")))]
+#[cite(mock(same("test content")))]
 fn test_function() {
     println!("Hello, world!");
 }
 
-#[cite(mock!(same!("struct content")))]
+#[cite(mock(same("struct content")))]
 struct TestStruct {
     field: i32,
 }
 
-#[cite(mock!(same!("trait content")))]
+#[cite(mock(same("trait content")))]
 trait TestTrait {
     fn test_method(&self);
 }
 
-#[cite(mock!(same!("impl content")))]
+#[cite(mock(same("impl content")))]
 impl TestStruct {
     fn new(field: i32) -> Self {
         Self { field }

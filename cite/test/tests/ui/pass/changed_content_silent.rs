@@ -2,7 +2,7 @@
 
 use cite::{cite, mock, changed};
 
-#[cite(mock!(changed!("old content", "new content")), level = "SILENT")]
+#[cite(mock(changed("old content", "new content")), level = "SILENT")]
 fn function_with_silent_diff() {
     println!("This should compile despite diff because level is SILENT");
 }
