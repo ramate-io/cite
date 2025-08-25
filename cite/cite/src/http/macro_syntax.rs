@@ -18,7 +18,7 @@
 //! 2. Scan remaining arguments for assignment expressions
 //! 3. Extract required `url` parameter
 //! 4. Match additional parameters to known HTTP options
-//! 5. Construct HypertextMatch using cite-hypertext
+//! 5. Construct HttpMatch using cite-http
 //!
 //! # Supported Parameters
 //!
@@ -61,7 +61,7 @@
 //! ```
 
 use syn::{Expr, Lit};
-use cite_hypertext::{HypertextMatch, MatchExpression};
+use cite_http::{HttpMatch, MatchExpression};
 
 /// Parse the keyword argument syntax for HTTP sources
 /// 
@@ -69,7 +69,7 @@ use cite_hypertext::{HypertextMatch, MatchExpression};
 /// - `http, url = "https://example.com", pattern = "regex"`
 /// - `http, url = "https://example.com", selector = "h1"`
 /// - `http, url = "https://example.com", match_type = "full"`
-pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HypertextMatch> {
+pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
     // Look for pattern: http, url = "...", (pattern|selector|match_type) = "..."
     if args.is_empty() {
         return None;
@@ -123,15 +123,15 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<HypertextMatch> {
                 }
             }
             
-            // Construct HypertextMatch if we have required parameters
+            // Construct HttpMatch if we have required parameters
             if let (Some(url_str), Some(match_expr)) = (url, match_expression) {
                 // Validate URL format at parse time
                 if !is_valid_url(&url_str) {
                     return None;
                 }
                 
-                // Try to create HypertextMatch
-                return HypertextMatch::with_match_expression(&url_str, match_expr).ok();
+                // Try to create HttpMatch
+                return HttpMatch::with_match_expression(&url_str, match_expr).ok();
             }
             
             // If we got this far but don't have required params, return None

@@ -20,7 +20,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 cite-core = { workspace = true }
 cite-cache = { workspace = true }
-cite-hypertext = { workspace = true }
+cite-http = { workspace = true }
 
 # Heavy dependencies for macro expansion - build-time only
 regex = { workspace = true }

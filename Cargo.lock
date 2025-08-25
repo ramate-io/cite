@@ -155,7 +155,7 @@ dependencies = [
  "chrono",
  "cite-cache",
  "cite-core",
- "cite-hypertext",
+ "cite-http",
  "proc-macro2",
  "quote",
  "regex",
@@ -191,7 +191,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cite-hypertext"
+name = "cite-http"
 version = "0.0.1"
 dependencies = [
  "anyhow",

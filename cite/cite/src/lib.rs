@@ -134,10 +134,10 @@ use syn::{
 /// Additional behavior parameters are handled by the main citation parser.
 mod mock;
 
-/// HTTP/Hypertext source parsing and construction
+/// HTTP/Http source parsing and construction
 /// 
 /// This module handles the parsing of HTTP source syntax and construction of
-/// HypertextMatch instances during macro expansion. It implements the keyword
+/// HttpMatch instances during macro expansion. It implements the keyword
 /// argument parsing for HTTP sources.
 /// 
 /// The HTTP source syntax supports:
@@ -745,7 +745,7 @@ fn execute_mock_source_validation(
 
 /// Execute HTTP source validation and return the result
 fn execute_http_source_validation(
-    http_source: cite_hypertext::HypertextMatch,
+    http_source: cite_http::HttpMatch,
     behavior: &cite_core::CitationBehavior, 
     level_override: Option<cite_core::CitationLevel>
 ) -> Option<std::result::Result<Option<String>, String>> {

@@ -1,8 +1,8 @@
-//! HTTP/Hypertext Source Implementation for Citation Macros
+//! HTTP/Http Source Implementation for Citation Macros
 //!
-//! This module provides parsing and construction of HypertextMatch sources within
+//! This module provides parsing and construction of HttpMatch sources within
 //! the `#[cite]` procedural macro. It handles the translation from macro syntax
-//! to actual HypertextMatch objects that can validate web content at compile time.
+//! to actual HttpMatch objects that can validate web content at compile time.
 //!
 //! # Design Rationale
 //!
@@ -33,32 +33,22 @@
 //!
 //! 1. **Syntax Parsing**: Extract HTTP-specific arguments from the citation
 //! 2. **Validation**: Validate URLs and match expressions at compile time
-//! 3. **Source Construction**: Create HypertextMatch instances using cite-hypertext
+//! 3. **Source Construction**: Create HttpMatch instances using cite-http
 //!
 //! This separation allows the parsing logic to focus on syntax while delegating
-//! the actual HTTP source creation to the hypertext library.
+//! the actual HTTP source creation to the http library.
 
 use syn::Expr;
-use cite_hypertext::HypertextMatch;
+use cite_http::HttpMatch;
 
 mod macro_syntax;
 
-/// Try to construct a HypertextMatch from the citation expression
-/// 
-/// This function is kept for backwards compatibility but is deprecated
-/// in favor of the keyword argument parsing approach.
-pub fn try_construct_http_source_from_expr(_expr: &Expr) -> Option<HypertextMatch> {
-    // This function is deprecated in favor of try_construct_http_source_from_citation_args
-    // but kept for backwards compatibility with any remaining direct expression parsing
-    None
-}
-
-/// Try to construct a HypertextMatch from citation arguments using keyword syntax
+/// Try to construct a HttpMatch from citation arguments using keyword syntax
 /// 
 /// Supports syntax like:
 /// - `http, url = "https://example.com", pattern = "regex"`
 /// - `http, url = "https://example.com", selector = "h1"`  
 /// - `http, url = "https://example.com", match_type = "full"`
-pub fn try_construct_http_source_from_citation_args(args: &[Expr]) -> Option<HypertextMatch> {
+pub fn try_construct_http_source_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
     macro_syntax::try_parse_from_citation_args(args)
 }

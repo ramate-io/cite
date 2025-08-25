@@ -6,7 +6,7 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use similar::{ChangeTag, TextDiff};
 
-/// Match expression for extracting content from hypertext
+/// Match expression for extracting content from http
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MatchExpression {
     /// Regex pattern matching
@@ -40,7 +40,7 @@ impl MatchExpression {
         Self::FullDocument
     }
     
-    /// Extract matching content from hypertext
+    /// Extract matching content from http
     pub fn extract_from(&self, content: &str) -> Result<String, SourceError> {
         match self {
             MatchExpression::Regex(pattern) => {
@@ -126,12 +126,12 @@ impl SourceUrl {
     }
 }
 
-/// Hypertext content that was referenced at commit time
+/// Http content that was referenced at commit time
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReferencedHypertext {
+pub struct ReferencedHttp {
     /// The extracted content that was referenced
     pub content: String,
-    /// Metadata about the hypertext source
+    /// Metadata about the http source
     pub metadata: HashMap<String, String>,
     /// The URL that was accessed
     pub source_url: SourceUrl,
@@ -139,18 +139,18 @@ pub struct ReferencedHypertext {
     pub match_expression: MatchExpression,
 }
 
-impl Content for ReferencedHypertext {}
-impl Referenced for ReferencedHypertext {}
+impl Content for ReferencedHttp {}
+impl Referenced for ReferencedHttp {}
 
-impl CacheableReferenced for ReferencedHypertext {
+impl CacheableReferenced for ReferencedHttp {
     fn from_cached_buffer(buffer: Vec<u8>) -> Result<Self, CacheError> {
         serde_json::from_slice(&buffer).map_err(|e| CacheError::Deserialize(e.into()))
     }
 }
 
-/// Current hypertext content fetched from the web
+/// Current http content fetched from the web
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CurrentHypertext {
+pub struct CurrentHttp {
     /// The extracted content currently available
     pub content: String,
     /// Current metadata (headers, timestamps, etc.)
@@ -159,19 +159,19 @@ pub struct CurrentHypertext {
     pub source_url: SourceUrl,
     /// The match expression used
     pub match_expression: MatchExpression,
-    /// Raw hypertext before extraction (for debugging)
+    /// Raw http before extraction (for debugging)
     pub raw_content: Option<String>,
 }
 
-impl Content for CurrentHypertext {}
+impl Content for CurrentHttp {}
 
-impl Current<ReferencedHypertext, HypertextDiff> for CurrentHypertext {
-    fn diff(&self, referenced: &ReferencedHypertext) -> Result<HypertextDiff, SourceError> {
+impl Current<ReferencedHttp, HttpDiff> for CurrentHttp {
+    fn diff(&self, referenced: &ReferencedHttp) -> Result<HttpDiff, SourceError> {
         let content_changed = self.content != referenced.content;
         let url_changed = self.source_url != referenced.source_url;
         let match_expression_changed = self.match_expression != referenced.match_expression;
         
-        let mut diff = HypertextDiff {
+        let mut diff = HttpDiff {
             content_changed,
             url_changed,
             match_expression_changed,
@@ -187,10 +187,10 @@ impl Current<ReferencedHypertext, HypertextDiff> for CurrentHypertext {
     }
 }
 
-impl CacheableCurrent<ReferencedHypertext, HypertextDiff> for CurrentHypertext {
+impl CacheableCurrent<ReferencedHttp, HttpDiff> for CurrentHttp {
     fn to_cached_buffer(&self) -> Result<Vec<u8>, CacheError> {
-        // Convert to ReferencedHypertext format for caching
-        let referenced = ReferencedHypertext {
+        // Convert to ReferencedHttp format for caching
+        let referenced = ReferencedHttp {
             content: self.content.clone(),
             metadata: self.metadata.clone(),
             source_url: self.source_url.clone(),
@@ -200,9 +200,9 @@ impl CacheableCurrent<ReferencedHypertext, HypertextDiff> for CurrentHypertext {
     }
 }
 
-/// Diff between referenced and current hypertext
+/// Diff between referenced and current http
 #[derive(Debug, Clone, PartialEq)]
-pub struct HypertextDiff {
+pub struct HttpDiff {
     pub content_changed: bool,
     pub url_changed: bool,
     pub match_expression_changed: bool,
@@ -211,7 +211,7 @@ pub struct HypertextDiff {
     pub unified_diff: Option<String>,
 }
 
-impl HypertextDiff {
+impl HttpDiff {
     /// Generate a git-style unified diff
     pub fn generate_unified_diff(&mut self) {
         if self.content_changed {
@@ -239,26 +239,26 @@ impl HypertextDiff {
     }
 }
 
-impl Diff for HypertextDiff {
+impl Diff for HttpDiff {
     fn is_empty(&self) -> bool {
         !self.content_changed && !self.url_changed && !self.match_expression_changed
     }
 }
 
-/// Hypertext match source for checking committed hypertext references
-pub struct HypertextMatch {
+/// Http match source for checking committed http references
+pub struct HttpMatch {
     pub matches: MatchExpression,
     pub source_url: SourceUrl,
     pub cache_path: String,
     id: Id,
 }
 
-impl HypertextMatch {
-    /// Create a new hypertext match with caching
+impl HttpMatch {
+    /// Create a new http match with caching
     pub fn cached(url: &str, pattern: &str) -> Result<Self, SourceError> {
         let source_url = SourceUrl::new(url)?;
         let matches = MatchExpression::regex(pattern);
-        let cache_path = format!("hypertext_{}", Self::url_to_cache_key(url));
+        let cache_path = format!("http_{}", Self::url_to_cache_key(url));
         let id = Id::new(cache_path.clone());
         
         Ok(Self {
@@ -272,7 +272,7 @@ impl HypertextMatch {
     /// Create with custom match expression
     pub fn with_match_expression(url: &str, expression: MatchExpression) -> Result<Self, SourceError> {
         let source_url = SourceUrl::new(url)?;
-        let cache_path = format!("hypertext_{}", Self::url_to_cache_key(url));
+        let cache_path = format!("http_{}", Self::url_to_cache_key(url));
         let id = Id::new(cache_path.clone());
         
         Ok(Self {
@@ -294,8 +294,8 @@ impl HypertextMatch {
             .collect()
     }
     
-    /// Fetch hypertext content from the URL
-    fn fetch_hypertext(&self) -> Result<String, SourceError> {
+    /// Fetch http content from the URL
+    fn fetch_http(&self) -> Result<String, SourceError> {
         // For testing, use simulated responses for known URLs
         match self.source_url.as_str() {
             url if url.contains("example.com") => {
@@ -347,22 +347,22 @@ impl HypertextMatch {
     }
 }
 
-impl Source<ReferencedHypertext, CurrentHypertext, HypertextDiff> for HypertextMatch {
+impl Source<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
     fn id(&self) -> &Id {
         &self.id
     }
     
-    fn get(&self) -> Result<Comparison<ReferencedHypertext, CurrentHypertext, HypertextDiff>, SourceError> {
+    fn get(&self) -> Result<Comparison<ReferencedHttp, CurrentHttp, HttpDiff>, SourceError> {
         let current = self.get_current()?;
         let referenced = self.get_referenced()?;
         let diff = current.diff(&referenced)?;
         Ok(Comparison::new(referenced, current, diff))
     }
     
-    fn get_referenced(&self) -> Result<ReferencedHypertext, SourceError> {
+    fn get_referenced(&self) -> Result<ReferencedHttp, SourceError> {
         // This would typically come from commit history or cache
         // For now, return a placeholder
-        Ok(ReferencedHypertext {
+        Ok(ReferencedHttp {
             content: "Referenced content placeholder".to_string(),
             metadata: HashMap::new(),
             source_url: self.source_url.clone(),
@@ -370,15 +370,15 @@ impl Source<ReferencedHypertext, CurrentHypertext, HypertextDiff> for HypertextM
         })
     }
     
-    fn get_current(&self) -> Result<CurrentHypertext, SourceError> {
-        let raw_content = self.fetch_hypertext()?;
+    fn get_current(&self) -> Result<CurrentHttp, SourceError> {
+        let raw_content = self.fetch_http()?;
         let extracted_content = self.extract_content(&raw_content)?;
         
         let mut metadata = HashMap::new();
         metadata.insert("fetched_at".to_string(), chrono::Utc::now().to_rfc3339());
         metadata.insert("content_length".to_string(), raw_content.len().to_string());
         
-        Ok(CurrentHypertext {
+        Ok(CurrentHttp {
             content: extracted_content,
             metadata,
             source_url: self.source_url.clone(),
@@ -423,15 +423,15 @@ mod tests {
     }
 
     #[test]
-    fn test_hypertext_match_creation() -> Result<()> {
-        let http_match = HypertextMatch::cached("https://example.com", ".*")?;
+    fn test_http_match_creation() -> Result<()> {
+        let http_match = HttpMatch::cached("https://example.com", ".*")?;
         assert_eq!(http_match.source_url.as_str(), "https://example.com");
         Ok(())
     }
 
     #[test]
-    fn test_hypertext_source_fetch() -> Result<()> {
-        let http_match = HypertextMatch::cached("https://example.com", ".*")?;
+    fn test_http_source_fetch() -> Result<()> {
+        let http_match = HttpMatch::cached("https://example.com", ".*")?;
         let current = http_match.get_current()?;
         
         assert!(current.content.contains("Example Domain"));
@@ -441,15 +441,15 @@ mod tests {
     }
 
     #[test]
-    fn test_hypertext_diff() -> Result<()> {
-        let referenced = ReferencedHypertext {
+    fn test_http_diff() -> Result<()> {
+        let referenced = ReferencedHttp {
             content: "old content".to_string(),
             metadata: HashMap::new(),
             source_url: SourceUrl::new("https://example.com")?,
             match_expression: MatchExpression::regex(".*"),
         };
         
-        let current = CurrentHypertext {
+        let current = CurrentHttp {
             content: "new content".to_string(),
             metadata: HashMap::new(),
             source_url: SourceUrl::new("https://example.com")?,
@@ -467,12 +467,12 @@ mod tests {
     }
 
     #[test]
-    fn test_hypertext_with_cache() -> Result<()> {
+    fn test_http_with_cache() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), std::path::PathBuf::from("cache"));
         let cache = builder.build()?;
         
-        let http_match = HypertextMatch::cached("https://example.com", ".*")?;
+        let http_match = HttpMatch::cached("https://example.com", ".*")?;
         
         // Test with cache enabled
         let result = cache.get_source_with_cache(http_match, CacheBehavior::Enabled)?;
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn test_cacheable_serialization() -> Result<()> {
-        let referenced = ReferencedHypertext {
+        let referenced = ReferencedHttp {
             content: "test content".to_string(),
             metadata: HashMap::new(),
             source_url: SourceUrl::new("https://example.com")?,
@@ -493,7 +493,7 @@ mod tests {
         };
         
         let buffer = serde_json::to_vec(&referenced)?;
-        let deserialized = ReferencedHypertext::from_cached_buffer(buffer)?;
+        let deserialized = ReferencedHttp::from_cached_buffer(buffer)?;
         
         assert_eq!(referenced, deserialized);
         Ok(())
@@ -523,13 +523,13 @@ mod tests {
 
     #[test]
     fn test_timestamp_endpoint_shows_diff() -> Result<()> {
-        let http_match = HypertextMatch::cached("https://httpbin.org/json", r#""timestamp":\s*(\d+)"#)?;
+        let http_match = HttpMatch::cached("https://httpbin.org/json", r#""timestamp":\s*(\d+)"#)?;
         
         // Get first response
         let current1 = http_match.get_current()?;
         
         // Simulate a referenced value (previous timestamp)
-        let referenced = ReferencedHypertext {
+        let referenced = ReferencedHttp {
             content: "1234567890".to_string(),
             metadata: HashMap::new(),
             source_url: http_match.source_url.clone(),
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_uuid_endpoint_changes() -> Result<()> {
-        let http_match = HypertextMatch::cached("https://httpbin.org/uuid", r#""uuid":\s*"([^"]+)""#)?;
+        let http_match = HttpMatch::cached("https://httpbin.org/uuid", r#""uuid":\s*"([^"]+)""#)?;
         
         // Get two responses
         let current1 = http_match.get_current()?;
@@ -572,14 +572,14 @@ mod tests {
         let builder = CacheBuilder::new(temp_dir.path().to_path_buf(), std::path::PathBuf::from("cache"));
         let cache = builder.build()?;
         
-        let http_match = HypertextMatch::cached("https://worldtimeapi.org/api/timezone/UTC", r#""timestamp":\s*(\d+)"#)?;
+        let http_match = HttpMatch::cached("https://worldtimeapi.org/api/timezone/UTC", r#""timestamp":\s*(\d+)"#)?;
         
         // First access - will cache current as referenced
         let result1 = cache.get_source_with_cache(http_match, CacheBehavior::Enabled)?;
         let first_timestamp = result1.current().content.clone();
         
         // Create a new source with same ID
-        let http_match2 = HypertextMatch::cached("https://worldtimeapi.org/api/timezone/UTC", r#""timestamp":\s*(\d+)"#)?;
+        let http_match2 = HttpMatch::cached("https://worldtimeapi.org/api/timezone/UTC", r#""timestamp":\s*(\d+)"#)?;
         
         // Second access - will use cached referenced but fetch fresh current
         std::thread::sleep(std::time::Duration::from_millis(1001)); // Ensure different timestamp (> 1 second)
@@ -603,15 +603,15 @@ mod tests {
     }
 
     #[test] 
-    fn test_hypertext_diff_formatting() -> Result<()> {
-        let referenced = ReferencedHypertext {
+    fn test_http_diff_formatting() -> Result<()> {
+        let referenced = ReferencedHttp {
             content: "Line 1\nOld Line 2\nLine 3".to_string(),
             metadata: HashMap::new(),
             source_url: SourceUrl::new("https://example.com")?,
             match_expression: MatchExpression::full_document(),
         };
         
-        let current = CurrentHypertext {
+        let current = CurrentHttp {
             content: "Line 1\nNew Line 2\nLine 3\nLine 4".to_string(),
             metadata: HashMap::new(),
             source_url: SourceUrl::new("https://example.com")?,
