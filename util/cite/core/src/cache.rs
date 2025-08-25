@@ -111,7 +111,7 @@ impl Cache {
     Ok(Some(cached_entry))
    }
 
-   pub fn set<R: CacheableReferenced, C: CacheableCurrent<R, D>, D: Diff>(&self, id: &Id, value: C) -> Result<(), CacheError> {
+   pub fn set<R: CacheableReferenced, C: CacheableCurrent<R, D>, D: Diff>(&self, id: &Id, value: &C) -> Result<(), CacheError> {
     let cache_file = self.cache_dir().join(id.as_str());
     let cache_buffer = value.to_cached_buffer()?;
     std::fs::write(&cache_file, cache_buffer).map_err(CacheError::WriteCacheFile)?;
@@ -125,21 +125,23 @@ impl Cache {
    }
 
    pub fn get_source_with_cache<S: Source<R, C, D>, R: CacheableReferenced, C: CacheableCurrent<R, D>, D: Diff>(&self, source: S, behavior: CacheBehavior) -> Result<Comparison<R, C, D>, CacheError> {
-    match behavior {
-        CacheBehavior::Ignored => {
-            let comparison = source.get().map_err(CacheError::SourceError)?;
-            Ok(comparison)
-        }
-        CacheBehavior::Enabled => {
-        let referenced = match self.get::<R>(source.id())? {
-            Some(referenced) => referenced,
-            None => source.get_referenced().map_err(CacheError::SourceError)?,
+        let comparison = match behavior {
+            CacheBehavior::Ignored => {
+                let comparison = source.get().map_err(CacheError::SourceError)?;
+                comparison
+            }
+            CacheBehavior::Enabled => {
+                let referenced = match self.get::<R>(source.id())? {
+                    Some(referenced) => referenced,
+                    None => source.get_referenced().map_err(CacheError::SourceError)?,
+                };
+                let current = source.get_current().map_err(CacheError::SourceError)?;
+                let diff = current.diff(&referenced).map_err(CacheError::SourceError)?;
+                Comparison::new(referenced, current, diff)
+            }
         };
-        let current = source.get_current().map_err(CacheError::SourceError)?;
-        let diff = current.diff(&referenced).map_err(CacheError::SourceError)?;
-        Ok(Comparison::new(referenced, current, diff))
-        }
-    }   
+        self.set(source.id(), comparison.current())?;
+        Ok(comparison)  
    }
 }
 
@@ -264,7 +266,7 @@ mod tests {
         let current = TestCurrent {
             content: "test content".to_string(),
         };
-        cache.set(&id, current)?;
+        cache.set(&id, &current)?;
 
         // Test get after set
         let result = cache.get::<TestReferenced>(&id)?;
@@ -356,7 +358,7 @@ mod tests {
         
         // Pre-populate cache with different content
         let cached_current = TestCurrent { content: "cached content".to_string() };
-        cache.set(&id, cached_current)?;
+        cache.set(&id, &cached_current)?;
         
         let source = TestSource {
             id: id.clone(),
