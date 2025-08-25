@@ -4,13 +4,20 @@ use syn::{
     parse_macro_input, parse_quote, Expr, ItemFn, ItemImpl, ItemStruct, ItemTrait, ItemMod,
     Lit, Result, punctuated::Punctuated, Token,
 };
+mod mock;
 
 /// The main `#[cite]` attribute macro
 /// 
-/// Supports syntax like:
+/// Supports struct reconstruction syntax like:
 /// - `#[cite(MockSource::same("content"))]`
 /// - `#[cite(MockSource::same("content"), reason = "why this is important")]`
 /// - `#[cite(MockSource::same("content"), level = "WARN", annotation = "ANY")]`
+/// 
+/// Supports macro-style syntax like:
+/// - `#[cite(mock(same("content")))]`
+/// - `#[cite(mock(changed("a", "b")))]`
+/// - `#[cite(mock(same("content"), reason = "why this is important"))]`
+/// - `#[cite(mock(changed("a", "b"), level = "WARN", annotation = "ANY"))]`
 #[proc_macro_attribute]
 pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
     // Parse as a list of expressions separated by commas
@@ -236,10 +243,10 @@ fn handle_mod_citation(citation: Citation, item_mod: ItemMod) -> proc_macro2::To
     }
 }
 
-/// Generate the validation code that will run at compile time  
+/// Generate validation code that executes the user's source expression with the real API
 fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
-    // Do actual validation during macro expansion
-    let validation_result = perform_compile_time_validation(citation);
+    // Actually try to perform validation during macro expansion
+    let validation_result = attempt_macro_expansion_validation(citation);
     let source_expr = &citation.source_expr;
     
     let reason_comment = if let Some(_reason) = &citation.reason {
@@ -257,7 +264,7 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
         proc_macro2::Span::call_site()
     );
     
-    // Generate the appropriate compile-time message based on validation result
+    // Generate code based on the validation result from macro expansion
     match validation_result {
         Ok(None) => {
             // Validation passed
@@ -306,8 +313,11 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
     }
 }
 
-/// Perform actual validation during macro expansion
-fn perform_compile_time_validation(citation: &Citation) -> std::result::Result<Option<String>, String> {
+/// Attempt to perform validation during macro expansion
+/// 
+/// This is the key function that tries to execute the user's source expression
+/// during macro expansion and return the validation result.
+fn attempt_macro_expansion_validation(citation: &Citation) -> std::result::Result<Option<String>, String> {
     use cite_util_core::{CitationBehavior, CitationLevel};
     
     // Parse level override if provided
@@ -325,58 +335,71 @@ fn perform_compile_time_validation(citation: &Citation) -> std::result::Result<O
     // Load behavior from environment (with defaults)
     let behavior = CitationBehavior::from_env();
     
-    // For demonstration with MockSource, let's simulate validation
-    // In a real implementation, this would instantiate and check the actual source
+    // Here's the challenge: we need to execute the user's source expression
+    // during macro expansion. Since we can't directly eval arbitrary expressions,
+    // we have a few options:
+    // 
+    // 1. Support specific known source patterns (like what I had before)
+    // 2. Use a plugin system where sources register macro-expansion handlers
+    // 3. Generate runtime validation and accept that errors happen at runtime
+    // 4. Provide const-compatible source implementations
+    //
+    // For now, let's go with option 1 but make it more general by supporting
+    // any source that implements a "macro expansion" trait or pattern
     
-    // Check if this looks like a MockSource::changed() call
-    if let Some(changed_content) = extract_mock_source_changed(citation) {
-        let (referenced, current) = changed_content;
-        
-        // Simulate the validation result  
-        let should_report = behavior.should_report(level_override);
-        let should_fail = behavior.should_fail_compilation(level_override);
-        
-        if should_report {
-            let diff_msg = format!(
-                "Citation content has changed!\n  Referenced: {}\n  Current: {}", 
-                referenced, current
-            );
-            
-            if should_fail {
-                return Err(diff_msg);
-            } else {
-                return Ok(Some(diff_msg));
-            }
-        } else {
-            // Silent mode
-            return Ok(None);
-        }
+    // Try to handle common source patterns
+    if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
+        return result;
     }
     
-    // If it's not a changed mock source, assume it's valid
+    // If we can't execute the source during macro expansion, assume it's valid
+    // The user can always add explicit validation later
     Ok(None)
 }
 
-/// Extract mock source change information for demonstration
-fn extract_mock_source_changed(citation: &Citation) -> Option<(String, String)> {
-    // This is a simplified parser to extract MockSource::changed("a", "b") for demonstration
-    // In a real implementation, this would be more robust
-    
-    if let syn::Expr::Call(call_expr) = &citation.source_expr {
-        if let syn::Expr::Path(path_expr) = &*call_expr.func {
-            let path_str = quote::quote!(#path_expr).to_string();
-            if path_str.contains("MockSource :: changed") {
-                if call_expr.args.len() == 2 {
-                    let args: Vec<_> = call_expr.args.iter().collect();
-                    if let (syn::Expr::Lit(lit1), syn::Expr::Lit(lit2)) = (args[0], args[1]) {
-                        if let (syn::Lit::Str(str1), syn::Lit::Str(str2)) = (&lit1.lit, &lit2.lit) {
-                            return Some((str1.value(), str2.value()));
-                        }
+/// Try to execute source expressions that we can handle during macro expansion
+fn try_execute_source_expression(
+    citation: &Citation, 
+    behavior: &cite_util_core::CitationBehavior, 
+    level_override: Option<cite_util_core::CitationLevel>
+) -> Option<std::result::Result<Option<String>, String>> {
+    // Try to construct and execute MockSource using the mock module
+    if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
+        use cite_util_core::Source;
+        
+        // Execute the real API!
+        match mock_source.get() {
+            Ok(comparison) => {
+                let result = comparison.validate(behavior, level_override);
+                
+                if !result.is_valid() {
+                    let diff_msg = format!(
+                        "Citation content has changed!\n  Referenced: {}\n  Current: {}", 
+                        comparison.referenced().0,
+                        comparison.current().0
+                    );
+                    
+                    if result.should_fail_compilation() {
+                        return Some(Err(diff_msg));
+                    } else if result.should_report() {
+                        return Some(Ok(Some(diff_msg)));
                     }
                 }
+                
+                return Some(Ok(None));
+            }
+            Err(e) => {
+                return Some(Err(format!("Citation source error: {:?}", e)));
             }
         }
     }
     
+    // Add support for other source types here as needed
+    // For example: try_construct_http_source, try_construct_file_source, etc.
+    
     None
 }
+
+
+
+

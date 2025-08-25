@@ -2,6 +2,7 @@ pub mod mock;
 pub mod behavior;
 
 pub use behavior::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
+pub use mock::{StaticMockSource, mock_same, mock_changed, mock_source};
 
 /// Errors thrown by the [Source].
 #[derive(Debug, thiserror::Error)]
