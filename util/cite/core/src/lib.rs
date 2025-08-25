@@ -6,6 +6,7 @@ pub mod id;
 pub use id::Id;
 pub use behavior::{CitationBehavior, CitationLevel, CitationAnnotation, CitationGlobal};
 pub use mock::{MockSource, mock_source_same, mock_source_changed};
+pub use cache::{CacheableReferenced, CacheableCurrent, CacheBuilder, Cache, CacheError, CacheBuilderError, CacheBehavior};
 
 /// Errors thrown by the [Source].
 #[derive(Debug, thiserror::Error)]
