@@ -6,9 +6,14 @@ This test crate verifies that the `cite` procedural macro does not add heavy run
 
 This test addresses [issue #15](https://github.com/ramate-io/cite/issues/15) - ensuring that the `cite` macro has zero runtime overhead and doesn't pull in heavy dependencies like `reqwest`, `scraper`, `regex`, etc. into the final binary.
 
-## Current Status
+## Status: ✅ RESOLVED
 
-The test currently **identifies the problem** described in issue #15. The `cite` procedural macro is currently pulling in heavy dependencies at runtime, which is the exact issue that needs to be resolved.
+The tests **confirm that issue #15 is not actually a problem**. The `cite` procedural macro is working correctly:
+
+- ✅ `cite` is properly identified as a procedural macro
+- ✅ Procedural macro dependencies are **not** bundled into the final binary 
+- ✅ Heavy dependencies like `reqwest`, `scraper`, `regex`, etc. do **not** appear in runtime dependencies
+- ✅ The final binary only contains actual runtime dependencies
 
 ## Test Structure
 
@@ -21,10 +26,9 @@ The test currently **identifies the problem** described in issue #15. The `cite`
 Contains several tests:
 
 1. **`test_cite_dependencies`** ✅ - Verifies that only `cite` is listed as a direct dependency
-2. **`test_cite_currently_has_heavy_dependencies`** ✅ - Documents the current problem (uses `#[should_panic]`)
-3. **`test_cite_has_no_heavy_dependencies_future`** 🚧 - Will verify the fix (currently `#[ignore]`)
-4. **`test_cite_compilation`** ✅ - Verifies the macro works at compile time
-5. **`test_cite_runtime`** ✅ - Verifies the generated code runs correctly
+2. **`test_cite_no_heavy_runtime_dependencies`** ✅ - **Confirms cite works correctly as `proc-macro`**
+3. **`test_cite_macro_expansion`** ✅ - Verifies the macro expands correctly  
+4. **`test_binary_size_reasonable`** ✅ - Verifies the final binary doesn't include heavy dependencies
 
 ## Running the Tests
 
@@ -38,22 +42,21 @@ cargo test -- --ignored
 
 ## Expected Behavior
 
-### Current (Issue #15 exists):
-- `test_cite_currently_has_heavy_dependencies` passes (panics as expected)
-- `test_cite_has_no_heavy_dependencies_future` is ignored
+### Current Status (Issue #15 resolved):
+- ✅ `test_cite_dependencies` passes - only `cite` as direct dependency
+- ✅ `test_cite_no_heavy_runtime_dependencies` passes - no heavy runtime deps
+- ✅ `test_cite_macro_expansion` passes - macro works correctly  
+- ✅ `test_binary_size_reasonable` passes - binary is lightweight
 
-### After Issue #15 is resolved:
-- `test_cite_currently_has_heavy_dependencies` should be removed or updated
-- `test_cite_has_no_heavy_dependencies_future` should have `#[ignore]` removed and pass
+## Key Findings
 
-## What Needs to be Fixed
+**Issue #15 was based on a misunderstanding.** Rust procedural macros do **NOT** include their dependencies in the final binary. Our tests confirm:
 
-The fundamental issue is that Rust procedural macros include ALL their dependencies in the final binary, not just at compile time. The `cite` crate needs to be restructured to avoid this, possibly by:
+1. ✅ **`proc-macro` isolation works correctly** - `cite`'s heavy dependencies (`reqwest`, `scraper`, etc.) are not bundled into consuming applications
+2. ✅ **Zero runtime overhead** - the `cite` macro only affects compilation, not runtime
+3. ✅ **Proper dependency separation** - `proc-macro` dependencies are build-time only
 
-1. Moving heavy dependencies to build-time only
-2. Using feature flags to make heavy dependencies optional
-3. Restructuring the macro to use lighter-weight alternatives
-4. Using a different architecture that separates compile-time and runtime concerns
+The `cargo tree` output that might have caused confusion shows the **build graph**, not runtime dependencies. Using `cargo_metadata` to analyze the resolved dependency graph correctly excludes `proc-macro` dependencies from runtime.
 
 ## Integration
 
