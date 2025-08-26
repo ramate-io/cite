@@ -5,6 +5,11 @@ resolver = "2"
 members = [
 
   "cite/*",
+  "tests/dependencies",
+  "tests/no-std",
+  "tests/no-std-bin",
+  "tests/embedded-lib",
+  "tests/embedded-bin",
   
 ]
 

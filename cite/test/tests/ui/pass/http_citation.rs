@@ -29,13 +29,13 @@ fn test_function_with_reason() {
 
 #[cite(
 	http,
-	url = "https://httpbin.org/anything",
+	url = "https://jsonplaceholder.typicode.com/todos/1",
 	match_type = "full",
 	level = "WARN",
 	reason = "API documentation reference"
 )]
 fn test_function_with_http_bin() {
-	println!("This function cites an https://httpbin.org/anything endpoint");
+	println!("This function cites an https://jsonplaceholder.typicode.com/todos/1 endpoint");
 }
 
 fn main() {

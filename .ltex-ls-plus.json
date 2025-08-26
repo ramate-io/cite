@@ -1,6 +1,9 @@
 {
   "ltex": {
-    "enabled": ["markdown", "restructuredtext"],
+    "enabled": [
+      "markdown",
+      "restructuredtext"
+    ],
     "language": "en-US",
     "checkFrequency": "save",
     "disabledRules": {
@@ -248,12 +251,25 @@
         "pyparsing",
         "Dioxus",
         "Roadline",
-        "READMEs"
+        "READMEs",
+        "toolchain",
+        "toolchains",
+        "enum",
+        "enums",
+        "GPIO",
+        "HAL"
       ]
     },
-    "bibtex": { "fields": {} },
-    "latex": { "commands": {}, "environments": {} },
-    "markdown": { "nodes": {} },
+    "bibtex": {
+      "fields": {}
+    },
+    "latex": {
+      "commands": {},
+      "environments": {}
+    },
+    "markdown": {
+      "nodes": {}
+    },
     "configurationTarget": {
       "addToDictionary": "workspaceFolder",
       "disableRule": "workspaceFolder",
