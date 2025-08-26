@@ -207,6 +207,7 @@ struct Citation {
 	source_expr: Expr,
 	reason: Option<String>,
 	level: Option<String>,
+	#[allow(dead_code)]
 	annotation: Option<String>,
 	// For keyword syntax, store the raw arguments
 	raw_args: Option<Vec<Expr>>,
