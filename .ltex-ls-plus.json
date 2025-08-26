@@ -255,7 +255,9 @@
         "toolchain",
         "toolchains",
         "enum",
-        "enums"
+        "enums",
+        "GPIO",
+        "HAL"
       ]
     },
     "bibtex": {

@@ -1,0 +1,19 @@
+[build]
+# Default target for STM32F4 series
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+# Use GDB for debugging STM32F4 targets
+runner = "arm-none-eabi-gdb -q -x openocd.gdb"
+rustflags = [
+  # Link against precompiled libraries optimized for Cortex-M4F
+  "-C", "link-arg=-Tlink.x",
+  # Use LLD for faster linking
+  "-C", "linker=flip-link",
+]
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+# Configure for embedded ARM targets
+rustflags = [
+  "-C", "link-arg=-Tlink.x",
+]

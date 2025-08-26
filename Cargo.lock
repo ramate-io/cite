@@ -233,6 +233,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-embedded-bin-test"
+version = "0.0.1"
+dependencies = [
+ "cargo_metadata",
+ "cite",
+ "embedded-hal",
+ "serde_json",
+]
+
+[[package]]
+name = "cite-embedded-lib-test"
+version = "0.0.1"
+dependencies = [
+ "cargo_metadata",
+ "cite",
+ "embedded-hal",
+ "nb",
+ "serde_json",
+]
+
+[[package]]
 name = "cite-http"
 version = "0.0.1"
 dependencies = [
@@ -249,6 +270,15 @@ dependencies = [
  "similar",
  "tempfile",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cite-no-std-bin-test"
+version = "0.0.1"
+dependencies = [
+ "cargo_metadata",
+ "cite",
+ "serde_json",
 ]
 
 [[package]]
@@ -352,6 +382,12 @@ name = "ego-tree"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12a0bb14ac04a9fcf170d0bbbef949b44cc492f4452bd20c095636956f653642"
+
+[[package]]
+name = "embedded-hal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
 name = "encoding_rs"
@@ -972,6 +1008,12 @@ dependencies = [
  "security-framework-sys",
  "tempfile",
 ]
+
+[[package]]
+name = "nb"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
 name = "new_debug_unreachable"
