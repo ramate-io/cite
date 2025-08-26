@@ -18,11 +18,13 @@ fn embedded_main_loop() {
 }
 
 #[cite(mock, changed = ("old embedded task", "new embedded task"), level = "WARN")]
+#[allow(dead_code)]
 fn embedded_task() {
 	// Demonstrates cite in embedded task context
 }
 
 #[cite(mock, same = "embedded interrupt handler")]
+#[allow(dead_code)]
 fn embedded_interrupt_handler() {
 	// Demonstrates cite in interrupt context
 }

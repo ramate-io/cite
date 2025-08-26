@@ -698,7 +698,14 @@ mod tests {
 	#[test]
 	fn test_timestamp_endpoint_shows_diff() -> Result<(), anyhow::Error> {
 		// This won't match anything in the content
-		let http_match = HttpMatch::cached("https://httpbin.org/json", r#""timestamp":\s*(\d+)"#)?;
+		// replaced with https://jsonplaceholder.typicode.com
+		let http_match = HttpMatch::cached(
+			"https://jsonplaceholder.typicode.com/todos/1",
+			r#""timestamp":\s*(\d+)"#,
+		)?;
+
+		// flush the cache to make sure the behavior is new
+		http_match.flush_cache()?;
 
 		// Get first response
 		let current1 = http_match.get_current()?;
@@ -727,7 +734,14 @@ mod tests {
 
 	#[test]
 	fn test_uuid_endpoint_changes() -> Result<(), anyhow::Error> {
-		let http_match = HttpMatch::cached("https://httpbin.org/uuid", r#""uuid":\s*"([^"]+)""#)?;
+		// Using uuidtools.com for reliable UUID generation
+		let http_match = HttpMatch::cached(
+			"https://www.uuidtools.com/api/generate/v4/count/1",
+			r#"\["([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})"\]"#,
+		)?;
+
+		// flush the cache to make sure the behavior is new
+		http_match.flush_cache()?;
 
 		// Get two responses
 		let current1 = http_match.get_current()?;
@@ -918,9 +932,12 @@ mod tests {
 	#[test]
 	fn test_cache_hits_with_dynamic_content() -> Result<(), anyhow::Error> {
 		// Test cache behavior with dynamic content (UUID endpoint)
+		// Using uuidtools.com for reliable UUID generation
 		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
-			"https://httpbin.org/uuid",
-			MatchExpression::regex(r#""uuid":\s*"([^"]+)""#),
+			"https://www.uuidtools.com/api/generate/v4/count/1",
+			MatchExpression::regex(
+				r#"\["([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})"\]"#,
+			),
 			cite_cache::CacheBehavior::Enabled,
 		)?;
 
