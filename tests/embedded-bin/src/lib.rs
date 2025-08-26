@@ -98,6 +98,7 @@ pub mod embedded_gpio {
 
 	#[cite(mock, same = "embedded pin abstraction")]
 	pub struct EmbeddedPin {
+		#[allow(dead_code)]
 		id: u8,
 	}
 

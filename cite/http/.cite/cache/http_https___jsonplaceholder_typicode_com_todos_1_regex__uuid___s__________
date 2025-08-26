@@ -1,0 +1,1 @@
+{"content":"","metadata":{"fetched_at":"2025-08-26T13:53:51.787590+00:00","content_length":"83"},"source_url":{"url":"https://jsonplaceholder.typicode.com/todos/1","normalized":"https://jsonplaceholder.typicode.com/todos/1","fragment":null},"match_expression":{"Regex":"\"uuid\":\\s*\"([^\"]+)\""}}

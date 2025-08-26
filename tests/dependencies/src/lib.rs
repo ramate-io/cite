@@ -18,9 +18,9 @@ pub fn another_function() {
 }
 
 /// A function that cites an httpbin source
-#[cite(http, url = "https://httpbin.org/get", match_type = "full")]
-pub fn httpbin_function() {
-	println!("httpbin function");
+#[cite(http, url = "https://jsonplaceholder.typicode.com/todos/1", match_type = "full")]
+pub fn jsonplaceholder_function() {
+	println!("jsonplaceholder function");
 }
 
 #[cfg(test)]
@@ -31,5 +31,6 @@ mod tests {
 	fn test_functions_work() {
 		test_function();
 		another_function();
+		jsonplaceholder_function();
 	}
 }
