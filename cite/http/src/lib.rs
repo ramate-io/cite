@@ -357,8 +357,16 @@ impl HttpMatch {
     
     /// Create HTTP match with automatic fragment detection
     /// If the URL contains a fragment, it will automatically use fragment-based matching
+    /// If no fragment is present, defaults to full document matching
     pub fn with_auto_fragment(url: &str) -> Result<Self, SourceError> {
-        Self::try_new_for_macro(url, None, None)
+        let source_url = SourceUrl::new(url)?;
+        let match_expression = if let Some(fragment) = source_url.fragment() {
+            MatchExpression::fragment(fragment)
+        } else {
+            MatchExpression::full_document()
+        };
+        
+        Self::with_match_expression_and_cache_behavior(url, match_expression, cite_cache::CacheBehavior::Enabled)
     }
     
     /// Create HTTP match for macro usage with cache behavior determination
