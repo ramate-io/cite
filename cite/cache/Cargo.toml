@@ -14,6 +14,7 @@ cite-core = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+cargo_metadata = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -20,6 +20,7 @@ scraper = { workspace = true }
 similar = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 thiserror = { workspace = true }
+cargo_metadata = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

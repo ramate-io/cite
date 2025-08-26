@@ -308,6 +308,7 @@ impl Diff for HttpDiff {
 }
 
 /// Http match source for checking committed http references
+#[derive(Clone)]
 pub struct HttpMatch {
     pub matches: MatchExpression,
     pub source_url: SourceUrl,
@@ -547,8 +548,6 @@ impl Source<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use tempfile::TempDir;
-    use cite_cache::{CacheBuilder, CacheBehavior};
 
     #[test]
     fn test_match_expression_regex() -> Result<()> {
@@ -846,6 +845,200 @@ mod tests {
         // Should NOT contain content from other sections
         assert!(!extracted.contains("Other content"));
         
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_hits_with_static_content() -> Result<()> {
+        // Test cache behavior with static content (example.com)
+        let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://example.com",
+            MatchExpression::regex(".*"),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        // First call - should populate cache
+        let result1 = http_match.get()?;
+        let first_content = result1.current().content.clone();
+        assert!(first_content.contains("Example Domain"));
+
+        // Second call - should use cache for referenced content
+        let result2 = http_match.get()?;
+        
+        // The key test: referenced content should come from cache (first call's current)
+        assert_eq!(result2.referenced().content, first_content,
+                   "Second call should use cached content as referenced");
+        
+        // Current content should be the same for static sites
+        assert!(result2.current().content.contains("Example Domain"));
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_hits_with_dynamic_content() -> Result<()> {
+        // Test cache behavior with dynamic content (UUID endpoint)
+        let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://httpbin.org/uuid",
+            MatchExpression::regex(r#""uuid":\s*"([^"]+)""#),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        // First call - should populate cache
+        let result1 = http_match.get()?;
+        let first_uuid = result1.current().content.clone();
+        assert!(first_uuid.len() > 10); // Should contain UUID
+
+        // Small delay to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Second call - should use cache for referenced, fresh for current
+        let result2 = http_match.get()?;
+        
+        // Critical test: referenced should be from cache (first call's current)
+        assert_eq!(result2.referenced().content, first_uuid,
+                   "Referenced content should come from cache");
+        
+        // Current should be fresh (potentially different UUID)
+        assert!(result2.current().content.len() > 10);
+        
+        // If UUIDs are different, we should see a diff
+        if result2.current().content != first_uuid {
+            assert!(!result2.diff().is_empty(), "Should show diff when UUIDs differ");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_ignored_vs_enabled() -> Result<()> {
+        // Compare cache ignored vs enabled behavior
+        
+        // Test 1: Cache ignored - always fresh fetches
+        let http_match_ignored = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://httpbin.org/uuid",
+            MatchExpression::regex(r#""uuid":\s*"([^"]+)""#),
+            cite_cache::CacheBehavior::Ignored
+        )?;
+
+        let result_ignored = http_match_ignored.get()?;
+        // With ignored cache, referenced and current are separate fetches
+        assert!(!result_ignored.diff().is_empty(), "Cache ignored should show diff for dynamic content");
+
+        // Test 2: Cache enabled - should cache between calls
+        let http_match_enabled = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://httpbin.org/uuid",
+            MatchExpression::regex(r#""uuid":\s*"([^"]+)""#),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        // First call
+        let result1 = http_match_enabled.get()?;
+        let cached_content = result1.current().content.clone();
+
+        // Second call - should use cached referenced
+        let result2 = http_match_enabled.get()?;
+        assert_eq!(result2.referenced().content, cached_content,
+                   "Cache enabled should preserve referenced content between calls");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_with_different_sources_same_url() -> Result<()> {
+        // Test that different HttpMatch instances with same URL share cache
+        let url = "https://httpbin.org/uuid";
+        let pattern = r#""uuid":\s*"([^"]+)""#;
+        
+        // First HttpMatch instance
+        let http_match1 = HttpMatch::with_match_expression_and_cache_behavior(
+            url,
+            MatchExpression::regex(pattern),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        let result1 = http_match1.get()?;
+        let first_uuid = result1.current().content.clone();
+
+        // Second HttpMatch instance with same URL and pattern
+        let http_match2 = HttpMatch::with_match_expression_and_cache_behavior(
+            url,
+            MatchExpression::regex(pattern),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        let result2 = http_match2.get()?;
+        
+        // The second instance should use the first instance's cached content as referenced
+        assert_eq!(result2.referenced().content, first_uuid,
+                   "Different HttpMatch instances with same URL should share cache");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cache_hits_and_misses() -> Result<()> {
+        // Test cache behavior by observing results and storing expected values in memory
+        
+        // CACHE HIT: Test with static content where we can predict behavior
+        let http_match_static = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://example.com",
+            MatchExpression::regex(".*"),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        // First call - populate cache, store what we expect to be cached
+        let result1 = http_match_static.get()?;
+        let expected_cached_content = result1.current().content.clone();
+        assert!(expected_cached_content.contains("Example Domain"));
+
+        // Second call - should be CACHE HIT (referenced should match our stored expectation)
+        let result2 = http_match_static.get()?;
+        assert_eq!(result2.referenced().content, expected_cached_content,
+                   "CACHE HIT: Referenced should match what we stored from first call");
+        
+        // CACHE MISS: Test with cache ignored (always fresh fetches)
+        let http_match_ignored = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://httpbin.org/uuid",
+            MatchExpression::regex(r#""uuid":\s*"([^"]+)""#),
+            cite_cache::CacheBehavior::Ignored
+        )?;
+
+        let result_ignored = http_match_ignored.get()?;
+        // Store what we got for comparison
+        let ignored_referenced = result_ignored.referenced().content.clone();
+        let ignored_current = result_ignored.current().content.clone();
+        
+        // With cache ignored, referenced and current are separate fetches
+        // For dynamic content, they should usually be different
+        assert_ne!(ignored_referenced, ignored_current,
+                   "CACHE MISS: With cache ignored, referenced != current for dynamic content");
+        assert!(!result_ignored.diff().is_empty());
+
+        // DIFFERENT SOURCES: Different URLs should be independent
+        let http_match1 = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://example.com",
+            MatchExpression::regex(".*"),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+        
+        let http_match2 = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://httpbin.org/json",
+            MatchExpression::regex(".*"),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+
+        let result_example = http_match1.get()?;
+        let result_httpbin = http_match2.get()?;
+        
+        // Store what we got from each source
+        let example_content = result_example.current().content.clone();
+        let httpbin_content = result_httpbin.current().content.clone();
+        
+        // Different sources should have different content
+        assert_ne!(example_content, httpbin_content,
+                   "Different URLs should return different content");
+
         Ok(())
     }
 }
