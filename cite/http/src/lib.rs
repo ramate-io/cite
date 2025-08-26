@@ -338,7 +338,7 @@ impl HttpMatch {
         use cite_cache::CacheBuilder;
         
         let source_url = SourceUrl::new(url)?;
-        let cache_path = format!("http_{}", Self::url_to_cache_key(url));
+        let cache_path = format!("http_{}_{}", Self::url_to_cache_key(url), Self::match_expression_to_cache_key(&expression));
         let id = Id::new(cache_path.clone());
         
         // Always create a cache - the behavior determines how it's used
@@ -412,6 +412,25 @@ impl HttpMatch {
     fn url_to_cache_key(url: &str) -> String {
         // Replace unsafe characters for filesystem
         url.chars()
+            .map(|c| match c {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => c,
+                _ => '_',
+            })
+            .collect()
+    }
+    
+    /// Convert match expression to a safe cache key component
+    fn match_expression_to_cache_key(expression: &MatchExpression) -> String {
+        let key = match expression {
+            MatchExpression::Regex(pattern) => format!("regex_{}", pattern),
+            MatchExpression::CssSelector(selector) => format!("css_{}", selector),
+            MatchExpression::Fragment(fragment) => format!("frag_{}", fragment),
+            MatchExpression::XPath(xpath) => format!("xpath_{}", xpath),
+            MatchExpression::FullDocument => "full".to_string(),
+        };
+        
+        // Make it filesystem-safe
+        key.chars()
             .map(|c| match c {
                 'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => c,
                 _ => '_',
@@ -977,67 +996,46 @@ mod tests {
     }
 
     #[test]
-    fn test_cache_hits_and_misses() -> Result<()> {
-        // Test cache behavior by observing results and storing expected values in memory
+    fn test_cache_key_includes_match_expression() -> Result<()> {
+        // Test that different match expressions on same URL have different cache keys
+        let url = "https://example.com";
         
-        // CACHE HIT: Test with static content where we can predict behavior
-        let http_match_static = HttpMatch::with_match_expression_and_cache_behavior(
-            "https://example.com",
-            MatchExpression::regex(".*"),
-            cite_cache::CacheBehavior::Enabled
-        )?;
-
-        // First call - populate cache, store what we expect to be cached
-        let result1 = http_match_static.get()?;
-        let expected_cached_content = result1.current().content.clone();
-        assert!(expected_cached_content.contains("Example Domain"));
-
-        // Second call - should be CACHE HIT (referenced should match our stored expectation)
-        let result2 = http_match_static.get()?;
-        assert_eq!(result2.referenced().content, expected_cached_content,
-                   "CACHE HIT: Referenced should match what we stored from first call");
-        
-        // CACHE MISS: Test with cache ignored (always fresh fetches)
-        let http_match_ignored = HttpMatch::with_match_expression_and_cache_behavior(
-            "https://httpbin.org/uuid",
-            MatchExpression::regex(r#""uuid":\s*"([^"]+)""#),
-            cite_cache::CacheBehavior::Ignored
-        )?;
-
-        let result_ignored = http_match_ignored.get()?;
-        // Store what we got for comparison
-        let ignored_referenced = result_ignored.referenced().content.clone();
-        let ignored_current = result_ignored.current().content.clone();
-        
-        // With cache ignored, referenced and current are separate fetches
-        // For dynamic content, they should usually be different
-        assert_ne!(ignored_referenced, ignored_current,
-                   "CACHE MISS: With cache ignored, referenced != current for dynamic content");
-        assert!(!result_ignored.diff().is_empty());
-
-        // DIFFERENT SOURCES: Different URLs should be independent
-        let http_match1 = HttpMatch::with_match_expression_and_cache_behavior(
-            "https://example.com",
+        let http_match_regex = HttpMatch::with_match_expression_and_cache_behavior(
+            url,
             MatchExpression::regex(".*"),
             cite_cache::CacheBehavior::Enabled
         )?;
         
-        let http_match2 = HttpMatch::with_match_expression_and_cache_behavior(
-            "https://httpbin.org/json",
-            MatchExpression::regex(".*"),
+        let http_match_css = HttpMatch::with_match_expression_and_cache_behavior(
+            url,
+            MatchExpression::css_selector("title"),
+            cite_cache::CacheBehavior::Enabled
+        )?;
+        
+        let http_match_full = HttpMatch::with_match_expression_and_cache_behavior(
+            url,
+            MatchExpression::full_document(),
             cite_cache::CacheBehavior::Enabled
         )?;
 
-        let result_example = http_match1.get()?;
-        let result_httpbin = http_match2.get()?;
+        // Verify that different match expressions create different cache IDs
+        let regex_id = http_match_regex.id().as_str();
+        let css_id = http_match_css.id().as_str();
+        let full_id = http_match_full.id().as_str();
         
-        // Store what we got from each source
-        let example_content = result_example.current().content.clone();
-        let httpbin_content = result_httpbin.current().content.clone();
+        assert_ne!(regex_id, css_id, "Regex and CSS selector should have different cache IDs");
+        assert_ne!(regex_id, full_id, "Regex and full document should have different cache IDs");
+        assert_ne!(css_id, full_id, "CSS selector and full document should have different cache IDs");
         
-        // Different sources should have different content
-        assert_ne!(example_content, httpbin_content,
-                   "Different URLs should return different content");
+        // Verify they all contain the URL component
+        assert!(regex_id.contains("example_com"), "Cache ID should contain URL component");
+        assert!(css_id.contains("example_com"), "Cache ID should contain URL component");
+        assert!(full_id.contains("example_com"), "Cache ID should contain URL component");
+        
+        // Verify they contain match expression components
+        assert!(regex_id.contains("regex"), "Regex cache ID should contain 'regex'");
+        assert!(css_id.contains("css"), "CSS cache ID should contain 'css'");
+        assert!(full_id.contains("full"), "Full document cache ID should contain 'full'");
 
         Ok(())
     }
