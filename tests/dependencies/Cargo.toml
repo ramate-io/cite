@@ -3,9 +3,10 @@ name = "dependency-test"
 version = "0.1.0"
 edition = "2021"
 
-# This test crate should only depend on cite-core, not heavy dependencies
+# This test crate should only depend on cite.
+# We should not see dependencies from the macro compile-time trickle up to runtime. 
 [dependencies]
-cite-core = { path = "../../util/cite/core", default-features = false }
+cite = { workspace = true }
 
 # Test dependencies for verification
 [dev-dependencies]

@@ -293,6 +293,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dependency-test"
+version = "0.1.0"
+dependencies = [
+ "cargo_metadata",
+ "cite",
+ "serde_json",
+]
+
+[[package]]
 name = "derive_more"
 version = "0.99.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
