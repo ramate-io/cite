@@ -70,6 +70,9 @@ pub enum CacheError {
 	#[error("Failed to write cache file: {0}")]
 	WriteCacheFile(#[source] std::io::Error),
 
+	#[error("Cache file not found: {0}")]
+	CacheFileNotFound(#[source] std::io::Error),
+
 	#[error("Failed to delete cache file: {0}")]
 	DeleteCacheFile(#[source] std::io::Error),
 
@@ -131,6 +134,12 @@ impl Cache {
 
 	pub fn delete(&self, id: &Id) -> Result<(), CacheError> {
 		let cache_file = self.cache_dir().join(id.as_str());
+		if !cache_file.exists() {
+			return Err(CacheError::CacheFileNotFound(std::io::Error::new(
+				std::io::ErrorKind::NotFound,
+				format!("Cache file not found: {}", cache_file.display()),
+			)));
+		}
 		std::fs::remove_file(&cache_file).map_err(CacheError::DeleteCacheFile)?;
 		Ok(())
 	}

@@ -1,0 +1,1 @@
+{"content":"cad09a9f-8a1d-4016-be76-8a84aa35a629","metadata":{"content_length":"53","fetched_at":"2025-08-26T07:50:48.226422+00:00"},"source_url":{"url":"https://httpbin.org/uuid","normalized":"https://httpbin.org/uuid","fragment":null},"match_expression":{"Regex":"\"uuid\":\\s*\"([^\"]+)\""}}
