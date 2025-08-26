@@ -17,6 +17,12 @@ pub fn another_function() {
 	println!("Another function");
 }
 
+/// A function that cites an httpbin source
+#[cite(http, url = "https://httpbin.org/get", match_type = "full")]
+pub fn httpbin_function() {
+	println!("httpbin function");
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

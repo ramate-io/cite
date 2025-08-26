@@ -13,8 +13,8 @@ fn test_cite_dependencies() {
 	let test_package = metadata
 		.packages
 		.iter()
-		.find(|p| p.name == "dependency-test")
-		.expect("Failed to find dependency-test package");
+		.find(|p| p.name == "cite-dependency-test")
+		.expect("Failed to find cite-dependency-test package");
 
 	// Get only runtime dependencies (not dev dependencies)
 	let runtime_deps: Vec<_> = test_package
@@ -22,11 +22,6 @@ fn test_cite_dependencies() {
 		.iter()
 		.filter(|dep| matches!(dep.kind, DependencyKind::Normal))
 		.collect();
-
-	println!("Runtime dependencies for dependency-test:");
-	for dep in &runtime_deps {
-		println!("  - {} {}", dep.name, dep.req);
-	}
 
 	// Should only have cite as runtime dependency
 	assert_eq!(
@@ -56,7 +51,6 @@ fn test_cite_no_heavy_runtime_dependencies() {
 			.iter()
 			.any(|target| target.kind.iter().any(|k| format!("{:?}", k).contains("ProcMacro")));
 		assert!(is_proc_macro, "cite should be identified as a proc-macro");
-		println!("✅ cite correctly identified as proc-macro");
 	}
 
 	// Get the resolved dependency graph
@@ -66,8 +60,8 @@ fn test_cite_no_heavy_runtime_dependencies() {
 	let test_package_id = metadata
 		.packages
 		.iter()
-		.find(|p| p.name == "dependency-test")
-		.expect("Failed to find dependency-test package")
+		.find(|p| p.name == "cite-dependency-test")
+		.expect("Failed to find cite-dependency-test package")
 		.id
 		.clone();
 
@@ -93,7 +87,6 @@ fn test_cite_no_heavy_runtime_dependencies() {
 		"anyhow",
 	];
 
-	println!("Checking for forbidden runtime dependencies...");
 	for forbidden in &forbidden_runtime_deps {
 		let found_forbidden = runtime_deps.iter().any(|dep_id| {
 			metadata
@@ -111,10 +104,6 @@ fn test_cite_no_heavy_runtime_dependencies() {
 			forbidden
 		);
 	}
-
-	println!(
-		"✅ No heavy runtime dependencies found - cite macro correctly isolated as proc-macro!"
-	);
 }
 
 /// Recursively collect all runtime dependencies from the resolved dependency graph
@@ -155,8 +144,6 @@ fn test_cite_macro_expansion() {
 
 	// The functions in our lib.rs use cite macros - if they compile,
 	// the macro is working
-
-	println!("✅ Cite macro expansion works correctly");
 }
 
 /// Test that the final binary size is reasonable
@@ -167,10 +154,8 @@ fn test_cite_macro_expansion() {
 fn test_binary_size_reasonable() {
 	// A simple smoke test - if we can import and use cite
 	// without pulling in heavy dependencies, this should pass
-	use dependency_test::{another_function, test_function};
+	use cite_dependency_test::{another_function, test_function};
 
 	test_function();
 	another_function();
-
-	println!("✅ Binary runs without heavy dependencies");
 }

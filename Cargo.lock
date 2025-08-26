@@ -224,6 +224,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-dependency-test"
+version = "0.1.0"
+dependencies = [
+ "cargo_metadata",
+ "cite",
+ "serde_json",
+]
+
+[[package]]
 name = "cite-http"
 version = "0.0.1"
 dependencies = [
@@ -290,15 +299,6 @@ checksum = "13b588ba4ac1a99f7f2964d24b3d896ddc6bf847ee3855dbd4366f058cfcd331"
 dependencies = [
  "quote",
  "syn",
-]
-
-[[package]]
-name = "dependency-test"
-version = "0.1.0"
-dependencies = [
- "cargo_metadata",
- "cite",
- "serde_json",
 ]
 
 [[package]]
