@@ -83,6 +83,7 @@ impl MatchExpression {
                 Err(SourceError::ContentParsing("XPath expressions are not yet implemented".to_string()))
             }
             MatchExpression::FullDocument => {
+                // Return the entire content without regex processing
                 Ok(content.to_string())
             }
             MatchExpression::Fragment(fragment_id) => {
@@ -438,51 +439,34 @@ impl HttpMatch {
             .collect()
     }
     
-    /// Fetch http content from the URL
+    /// Fetch http content from the URL using synchronous HTTP client
     fn fetch_http(&self) -> Result<String, SourceError> {
-        // For testing, use simulated responses for known URLs
-        match self.source_url.as_str() {
-            url if url.contains("example.com") => {
-                Ok("<html><body><h1>Example Domain</h1><p>This domain is for use in illustrative examples.</p></body></html>".to_string())
-            }
-            url if url.contains("httpbin.org/json") => {
-                // Simulate a JSON response with timestamp that changes
-                let timestamp = chrono::Utc::now().timestamp();
-                Ok(format!(r#"{{"timestamp": {}, "data": "test response"}}"#, timestamp))
-            }
-            url if url.contains("httpbin.org/uuid") => {
-                // Simulate UUID endpoint that changes each time
-                let uuid = format!("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}", 
-                    chrono::Utc::now().timestamp() as u32,
-                    (chrono::Utc::now().timestamp() >> 32) as u16,
-                    4000, // version 4
-                    8000, // variant bits
-                    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64 & 0xffffffffffff
-                );
-                Ok(format!(r#"{{"uuid": "{}"}}"#, uuid))
-            }
-            url if url.contains("worldtimeapi.org") => {
-                // Simulate time API response
-                let now = chrono::Utc::now();
-                Ok(format!(r#"{{"datetime": "{}", "timestamp": {}}}"#, 
-                    now.to_rfc3339(), 
-                    now.timestamp()))
-            }
-            _ => {
-                // For real URLs in tests, use a blocking HTTP client
-                // Note: In production, this would be async
-                #[cfg(test)]
-                {
-                    Ok(format!("Mock response for {}", self.source_url.as_str()))
-                }
-                #[cfg(not(test))]
-                {
-                    // In production, you would use async reqwest here
-                    // For now, return an error for unknown URLs
-                    Err(SourceError::Network(format!("HTTP fetching not implemented for: {}", self.source_url.as_str())))
-                }
-            }
+        // Use blocking reqwest client for synchronous HTTP requests
+        // This is appropriate for compile-time macro execution
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("cite-http/1.0")
+            .build()
+            .map_err(|e| SourceError::Network(format!("Failed to create HTTP client: {}", e)))?;
+
+        let response = client
+            .get(self.source_url.as_str())
+            .send()
+            .map_err(|e| SourceError::Network(format!("HTTP request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(SourceError::Network(format!(
+                "HTTP request failed with status {}: {}", 
+                response.status(),
+                self.source_url.as_str()
+            )));
         }
+
+        let content = response
+            .text()
+            .map_err(|e| SourceError::Network(format!("Failed to read response body: {}", e)))?;
+
+        Ok(content)
     }
     
     /// Extract content using the match expression
@@ -604,9 +588,15 @@ mod tests {
 
     #[test]
     fn test_http_source_fetch() -> Result<()> {
-        let http_match = HttpMatch::cached("https://example.com", ".*")?;
+        // Use FullDocument to get the entire page content
+        let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+            "https://example.com",
+            MatchExpression::full_document(),
+            cite_cache::CacheBehavior::Enabled
+        )?;
         let current = http_match.get_current()?;
         
+        // Real example.com should contain "Example Domain"
         assert!(current.content.contains("Example Domain"));
         assert!(current.metadata.contains_key("fetched_at"));
         assert_eq!(current.source_url.as_str(), "https://example.com");
