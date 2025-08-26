@@ -6,6 +6,7 @@ members = [
 
   "cite/*",
   "tests/dependencies",
+  "tests/no-std",
   
 ]
 

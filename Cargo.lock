@@ -252,6 +252,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-no-std-test"
+version = "0.0.1"
+dependencies = [
+ "cargo_metadata",
+ "cite",
+ "serde_json",
+]
+
+[[package]]
 name = "cite-test"
 version = "0.0.1"
 dependencies = [
