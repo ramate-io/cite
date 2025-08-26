@@ -27,10 +27,22 @@ fn test_function_with_reason() {
 	println!("This function has HTTP citation with reason");
 }
 
+#[cite(
+	http,
+	url = "https://httpbin.org/anything",
+	match_type = "full",
+	level = "WARN",
+	reason = "API documentation reference"
+)]
+fn test_function_with_http_bin() {
+	println!("This function cites an https://httpbin.org/anything endpoint");
+}
+
 fn main() {
 	test_function_with_http_citation();
 	test_function_with_api_citation();
 	test_function_with_full_document();
 	test_function_with_level();
 	test_function_with_reason();
+	test_function_with_http_bin();
 }
