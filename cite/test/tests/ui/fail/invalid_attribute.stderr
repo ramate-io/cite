@@ -1,0 +1,5 @@
+error: Unknown citation attribute: invalid_attr
+ --> tests/ui/fail/invalid_attribute.rs:5:32
+  |
+5 | #[cite(mock, same = "content", invalid_attr = "value")]  // Should fail
+  |                                ^^^^^^^^^^^^

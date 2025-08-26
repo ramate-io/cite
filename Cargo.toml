@@ -4,7 +4,7 @@ resolver = "2"
 
 members = [
 
-  "util/cite/*",
+  "cite/*",
   
 ]
 
@@ -59,11 +59,16 @@ wasm-bindgen = "0.2"
 web-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 chrono = { version = "0.4.41" }
+reqwest = { version = "0.12", features = ["json"] }
+scraper = "0.20"
+similar = "2.0"
  
 # internal
-cite-util-core = { path = "util/cite/core" }
-cite-util-macro = { path = "util/cite/macro" }
-cite-util = { path = "util/cite/cite" }
+cite-core = { path = "cite/core" }
+cite-cache = { path = "cite/cache" }
+cite-http = { path = "cite/http" }
+cite-macro = { path = "cite/macro" }
+cite = { path = "cite/cite" }
 
 [workspace.lints.clippy]
 debug_assert_with_mut_call = "deny"
