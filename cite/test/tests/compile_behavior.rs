@@ -14,35 +14,33 @@ fn test_compile_fail() {
 
 #[test]
 fn test_footnote_annotation_requirements() {
-	// Set environment variables for the compilation process
-	std::env::set_var("CITE_ANNOTATION", "FOOTNOTE");
-
 	let t = trybuild::TestCases::new();
 
 	// Test that citations fail when CITE_ANNOTATION=FOOTNOTE is set but no reason provided
-	t.compile_fail("tests/ui/footnote-fail/*.rs");
+	t.compile_fail_with(
+		"tests/ui/footnote-fail/*.rs",
+		vec![("CITE_ANNOTATION", "FOOTNOTE")],
+		Vec::<String>::new(),
+	);
 
 	// Test that citations pass when CITE_ANNOTATION=FOOTNOTE is set and reason is provided
-	t.pass("tests/ui/footnote-pass/*.rs");
-
-	// Clean up environment variable
-	std::env::remove_var("CITE_ANNOTATION");
+	t.pass_with(
+		"tests/ui/footnote-pass/*.rs",
+		vec![("CITE_ANNOTATION", "FOOTNOTE")],
+		Vec::<String>::new(),
+	);
 }
 
 #[test]
 fn test_global_behavior_strict() {
-	// Set environment variables for the compilation process
-	std::env::set_var("CITE_LEVEL", "WARN");
-	std::env::set_var("CITE_GLOBAL", "STRICT");
-
 	let t = trybuild::TestCases::new();
 
 	// Test that local overrides are ignored when CITE_GLOBAL=STRICT
-	t.compile_fail("tests/ui/global-strict-fail/*.rs");
-
-	// Clean up environment variables
-	std::env::remove_var("CITE_LEVEL");
-	std::env::remove_var("CITE_GLOBAL");
+	t.compile_fail_with(
+		"tests/ui/global-strict-fail/*.rs",
+		vec![("CITE_LEVEL", "WARN"), ("CITE_GLOBAL", "STRICT")],
+		Vec::<String>::new(),
+	);
 }
 
 // Individual test cases for more granular control

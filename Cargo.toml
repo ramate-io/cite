@@ -67,6 +67,7 @@ chrono = { version = "0.4.41" }
 reqwest = { version = "0.12", features = ["json"] }
 scraper = "0.20"
 similar = "2.0"
+trybuild = { git = "https://github.com/l-monninger/trybuild", rev = "4c1c23dc2c03c7a1a485fa41cd17af76c0575021" }
  
 # internal
 cite-core = { path = "cite/core" }
