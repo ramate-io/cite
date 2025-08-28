@@ -1,5 +1,4 @@
 use crate::Citation;
-use cite_core::CitationAnnotation;
 
 /// Check if the citation meets annotation requirements based on feature flags
 pub fn check_annotation_requirements(citation: &Citation) -> Result<(), String> {
@@ -17,16 +16,4 @@ pub fn check_annotation_requirements(citation: &Citation) -> Result<(), String> 
 	}
 
 	Ok(())
-}
-
-/// Get the effective annotation requirement based on feature flags
-pub fn get_effective_annotation() -> CitationAnnotation {
-	#[cfg(feature = "annotation-footnote")]
-	{
-		CitationAnnotation::Footnote
-	}
-	#[cfg(not(feature = "annotation-footnote"))]
-	{
-		CitationAnnotation::Any
-	}
 }

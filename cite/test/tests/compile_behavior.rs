@@ -39,7 +39,7 @@ fn test_global_behavior_strict() {
 	t.compile_fail_with(
 		"tests/ui/global-strict-fail/*.rs",
 		Vec::<(String, String)>::new(),
-		vec!["cite:level-warn", "cite:global-strict"],
+		vec!["cite/level-warn", "cite/global-strict"],
 	);
 }
 

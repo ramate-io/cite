@@ -3,3 +3,5 @@ error: Citation requires documentation (annotation-footnote feature enabled) but
   |
 5 | #[cite(mock, same = "content")]
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)

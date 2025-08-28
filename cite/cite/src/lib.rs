@@ -692,7 +692,7 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 fn attempt_macro_expansion_validation(
 	citation: &Citation,
 ) -> std::result::Result<Option<String>, String> {
-	use cite_core::{CitationAnnotation, CitationBehavior, CitationLevel};
+	use cite_core::{CitationBehavior, CitationLevel};
 
 	// Parse level override if provided
 	let level_override = if let Some(level_str) = &citation.level {
