@@ -13,6 +13,16 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 
+[features]
+default = ["level-warn", "annotation-any", "global-lenient"]
+level-error = []
+level-warn = []
+level-silent = []
+annotation-footnote = []
+annotation-any = []
+global-strict = []
+global-lenient = []
+
 [dev-dependencies]
 tempfile = { workspace = true }
 

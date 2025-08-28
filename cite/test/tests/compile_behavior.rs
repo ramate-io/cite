@@ -16,18 +16,18 @@ fn test_compile_fail() {
 fn test_footnote_annotation_requirements() {
 	let t = trybuild::TestCases::new();
 
-	// Test that citations fail when CITE_ANNOTATION=FOOTNOTE is set but no reason provided
+	// Test that citations fail when annotation-footnote feature is enabled but no reason provided
 	t.compile_fail_with(
 		"tests/ui/footnote-fail/*.rs",
-		vec![("CITE_ANNOTATION", "FOOTNOTE")],
-		Vec::<String>::new(),
+		Vec::<(String, String)>::new(),
+		vec!["cite/annotation-footnote"],
 	);
 
-	// Test that citations pass when CITE_ANNOTATION=FOOTNOTE is set and reason is provided
+	// Test that citations pass when annotation-footnote feature is enabled and reason is provided
 	t.pass_with(
 		"tests/ui/footnote-pass/*.rs",
-		vec![("CITE_ANNOTATION", "FOOTNOTE")],
-		Vec::<String>::new(),
+		Vec::<(String, String)>::new(),
+		vec!["cite/annotation-footnote"],
 	);
 }
 
@@ -35,11 +35,11 @@ fn test_footnote_annotation_requirements() {
 fn test_global_behavior_strict() {
 	let t = trybuild::TestCases::new();
 
-	// Test that local overrides are ignored when CITE_GLOBAL=STRICT
+	// Test that local overrides are ignored when global-strict feature is enabled
 	t.compile_fail_with(
 		"tests/ui/global-strict-fail/*.rs",
-		vec![("CITE_LEVEL", "WARN"), ("CITE_GLOBAL", "STRICT")],
-		Vec::<String>::new(),
+		Vec::<(String, String)>::new(),
+		vec!["cite:level-warn", "cite:global-strict"],
 	);
 }
 

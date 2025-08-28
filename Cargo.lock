@@ -1992,7 +1992,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "trybuild"
 version = "1.0.110"
-source = "git+https://github.com/l-monninger/trybuild?rev=4c1c23dc2c03c7a1a485fa41cd17af76c0575021#4c1c23dc2c03c7a1a485fa41cd17af76c0575021"
+source = "git+https://github.com/l-monninger/trybuild?rev=0cdb8425fd42194a66bb07f0c4834acbfb2f21ef#0cdb8425fd42194a66bb07f0c4834acbfb2f21ef"
 dependencies = [
  "glob",
  "serde",

@@ -34,5 +34,14 @@ anyhow = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 
+[features]
+annotation-footnote = ["cite-core/annotation-footnote"]
+annotation-any = ["cite-core/annotation-any"]
+level-error = ["cite-core/level-error"]
+level-warn = ["cite-core/level-warn"]
+level-silent = ["cite-core/level-silent"]
+global-strict = ["cite-core/global-strict"]
+global-lenient = ["cite-core/global-lenient"]
+
 [lints]
 workspace = true

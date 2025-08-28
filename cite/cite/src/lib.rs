@@ -133,6 +133,7 @@ use syn::{
 ///
 /// Additional behavior parameters are handled by the main citation parser.
 mod mock;
+mod annotation;
 
 /// HTTP/Http source parsing and construction
 ///
@@ -705,24 +706,13 @@ fn attempt_macro_expansion_validation(
 		None
 	};
 
-	// Parse annotation override if provided
-	let annotation_override = if let Some(annotation_str) = &citation.annotation {
-		match annotation_str.as_str() {
-			"FOOTNOTE" | "footnote" => Some(CitationAnnotation::Footnote),
-			"ANY" | "any" => Some(CitationAnnotation::Any),
-			_ => None,
-		}
-	} else {
-		None
-	};
 
-	// Load behavior from environment (with defaults)
-	let behavior = CitationBehavior::from_env();
+
+	// Load behavior from feature flags
+	let behavior = CitationBehavior::from_features();
 
 	// Check annotation requirements first
-	if let Err(annotation_error) =
-		check_annotation_requirements(citation, &behavior, annotation_override)
-	{
+	if let Err(annotation_error) = annotation::check_annotation_requirements(citation) {
 		return Err(annotation_error);
 	}
 
@@ -736,32 +726,7 @@ fn attempt_macro_expansion_validation(
 	Ok(None)
 }
 
-/// Check if the citation meets annotation requirements based on global behavior
-fn check_annotation_requirements(
-	citation: &Citation,
-	behavior: &cite_core::CitationBehavior,
-	annotation_override: Option<cite_core::CitationAnnotation>,
-) -> std::result::Result<(), String> {
-	use cite_core::CitationAnnotation;
 
-	// Get the effective annotation requirement
-	let effective_annotation = behavior.effective_annotation(annotation_override);
-
-	// If FOOTNOTE is required, we need to check if the item has documentation
-	if effective_annotation == CitationAnnotation::Footnote {
-		// For now, we'll assume the item has documentation if it's provided
-		// In a full implementation, we'd need to parse the item to check for doc comments
-		// This is a simplified check - you might want to enhance this
-		if citation.reason.is_none() {
-			return Err(
-				"Citation requires documentation (CITE_ANNOTATION=FOOTNOTE) but no reason provided. \
-				Add a 'reason = \"...\"' attribute or set CITE_ANNOTATION=ANY".to_string()
-			);
-		}
-	}
-
-	Ok(())
-}
 
 /// Try to execute source expressions that we can handle during macro expansion
 fn try_execute_source_expression(

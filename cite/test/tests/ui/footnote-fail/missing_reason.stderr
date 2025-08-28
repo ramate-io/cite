@@ -1,4 +1,4 @@
-error: Citation requires documentation (CITE_ANNOTATION=FOOTNOTE) but no reason provided. Add a 'reason = "..."' attribute or set CITE_ANNOTATION=ANY
+error: Citation requires documentation (annotation-footnote feature enabled) but no reason provided. Add a 'reason = "..."' attribute or disable the annotation-footnote feature
  --> tests/ui/footnote-fail/missing_reason.rs:5:1
   |
 5 | #[cite(mock, same = "content")]
