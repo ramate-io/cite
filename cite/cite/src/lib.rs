@@ -121,6 +121,7 @@ use syn::{
 	parse_macro_input, parse_quote, punctuated::Punctuated, Expr, ItemEnum, ItemFn, ItemImpl,
 	ItemMod, ItemStruct, ItemTrait, Lit, Result, Token,
 };
+mod annotation;
 /// Mock source parsing and construction
 ///
 /// This module handles the parsing of mock source syntax and construction of
@@ -133,7 +134,6 @@ use syn::{
 ///
 /// Additional behavior parameters are handled by the main citation parser.
 mod mock;
-mod annotation;
 
 /// HTTP/Http source parsing and construction
 ///
@@ -706,8 +706,6 @@ fn attempt_macro_expansion_validation(
 		None
 	};
 
-
-
 	// Load behavior from feature flags
 	let behavior = CitationBehavior::from_features();
 
@@ -725,8 +723,6 @@ fn attempt_macro_expansion_validation(
 	// The user can always add explicit validation later
 	Ok(None)
 }
-
-
 
 /// Try to execute source expressions that we can handle during macro expansion
 fn try_execute_source_expression(
