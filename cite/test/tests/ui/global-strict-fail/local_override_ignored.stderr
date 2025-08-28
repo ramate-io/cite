@@ -1,0 +1,7 @@
+error: Citation content has changed!
+         Referenced: old content
+         Current: new content
+  --> tests/ui/global-strict-fail/local_override_ignored.rs:5:1
+   |
+5 | #[cite(mock, changed = ("old content", "new content"), level = "ERROR")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

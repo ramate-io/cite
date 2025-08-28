@@ -1,0 +1,5 @@
+error: Citation requires documentation (CITE_ANNOTATION=FOOTNOTE) but no reason provided. Add a 'reason = "..."' attribute or set CITE_ANNOTATION=ANY
+ --> tests/ui/footnote-fail/missing_reason.rs:5:1
+  |
+5 | #[cite(mock, same = "content")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

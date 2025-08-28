@@ -2,73 +2,106 @@
 
 #[test]
 fn test_compile_pass() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/*.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/*.rs");
 }
 
 #[test]
 fn test_compile_fail() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui/fail/*.rs");
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/fail/*.rs");
+}
+
+#[test]
+fn test_footnote_annotation_requirements() {
+	// Set environment variables for the compilation process
+	std::env::set_var("CITE_ANNOTATION", "FOOTNOTE");
+
+	let t = trybuild::TestCases::new();
+
+	// Test that citations fail when CITE_ANNOTATION=FOOTNOTE is set but no reason provided
+	t.compile_fail("tests/ui/footnote-fail/*.rs");
+
+	// Test that citations pass when CITE_ANNOTATION=FOOTNOTE is set and reason is provided
+	t.pass("tests/ui/footnote-pass/*.rs");
+
+	// Clean up environment variable
+	std::env::remove_var("CITE_ANNOTATION");
+}
+
+#[test]
+fn test_global_behavior_strict() {
+	// Set environment variables for the compilation process
+	std::env::set_var("CITE_LEVEL", "WARN");
+	std::env::set_var("CITE_GLOBAL", "STRICT");
+
+	let t = trybuild::TestCases::new();
+
+	// Test that local overrides are ignored when CITE_GLOBAL=STRICT
+	t.compile_fail("tests/ui/global-strict-fail/*.rs");
+
+	// Clean up environment variables
+	std::env::remove_var("CITE_LEVEL");
+	std::env::remove_var("CITE_GLOBAL");
 }
 
 // Individual test cases for more granular control
 #[test]
 fn test_basic_citation_compiles() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/basic_citation.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/basic_citation.rs");
 }
 
 #[test]
 fn test_citation_attributes_compile() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/citation_with_attributes.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/citation_with_attributes.rs");
 }
 
 #[test]
 fn test_missing_source_fails() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui/fail/missing_source.rs");
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/fail/missing_source.rs");
 }
 
 #[test]
 fn test_invalid_attribute_fails() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui/fail/invalid_attribute.rs");
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/fail/invalid_attribute.rs");
 }
 
 #[test]
 fn test_wrong_target_fails() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui/fail/wrong_target.rs");
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/fail/wrong_target.rs");
 }
 
 #[test]
 fn test_mock_diff_display_compiles() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/mock_diff_display.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/mock_diff_display.rs");
 }
 
 #[test]
 fn test_behavior_demonstration_compiles() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/behavior_demonstration.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/behavior_demonstration.rs");
 }
 
 #[test]
 fn test_module_citation_compiles() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/module_citation.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/module_citation.rs");
 }
 
 #[test]
 fn test_changed_content_error_fails() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui/fail/changed_content_error.rs");
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/fail/changed_content_error.rs");
 }
 
 #[test]
 fn test_changed_content_silent_compiles() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/ui/pass/changed_content_silent.rs");
+	let t = trybuild::TestCases::new();
+	t.pass("tests/ui/pass/changed_content_silent.rs");
 }

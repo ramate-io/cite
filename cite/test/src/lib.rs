@@ -56,7 +56,7 @@ pub mod tests {
     #[test]
     fn test_citation_with_changed_content() {
         // This should trigger a compile-time warning/error in debug mode
-        #[cite(mock, changed = ("original content", "modified content"))]
+        #[cite(mock, changed = ("original content", "modified content"), reason = "Test function with changed content")]
         fn function_with_changed_citation() {
             println!("This function references content that has changed");
         }

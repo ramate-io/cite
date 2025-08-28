@@ -691,7 +691,7 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 fn attempt_macro_expansion_validation(
 	citation: &Citation,
 ) -> std::result::Result<Option<String>, String> {
-	use cite_core::{CitationBehavior, CitationLevel};
+	use cite_core::{CitationAnnotation, CitationBehavior, CitationLevel};
 
 	// Parse level override if provided
 	let level_override = if let Some(level_str) = &citation.level {
@@ -705,20 +705,26 @@ fn attempt_macro_expansion_validation(
 		None
 	};
 
+	// Parse annotation override if provided
+	let annotation_override = if let Some(annotation_str) = &citation.annotation {
+		match annotation_str.as_str() {
+			"FOOTNOTE" | "footnote" => Some(CitationAnnotation::Footnote),
+			"ANY" | "any" => Some(CitationAnnotation::Any),
+			_ => None,
+		}
+	} else {
+		None
+	};
+
 	// Load behavior from environment (with defaults)
 	let behavior = CitationBehavior::from_env();
 
-	// Here's the challenge: we need to execute the user's source expression
-	// during macro expansion. Since we can't directly eval arbitrary expressions,
-	// we have a few options:
-	//
-	// 1. Support specific known source patterns (like what I had before)
-	// 2. Use a plugin system where sources register macro-expansion handlers
-	// 3. Generate runtime validation and accept that errors happen at runtime
-	// 4. Provide const-compatible source implementations
-	//
-	// For now, let's go with option 1 but make it more general by supporting
-	// any source that implements a "macro expansion" trait or pattern
+	// Check annotation requirements first
+	if let Err(annotation_error) =
+		check_annotation_requirements(citation, &behavior, annotation_override)
+	{
+		return Err(annotation_error);
+	}
 
 	// Try to handle common source patterns
 	if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
@@ -728,6 +734,33 @@ fn attempt_macro_expansion_validation(
 	// If we can't execute the source during macro expansion, assume it's valid
 	// The user can always add explicit validation later
 	Ok(None)
+}
+
+/// Check if the citation meets annotation requirements based on global behavior
+fn check_annotation_requirements(
+	citation: &Citation,
+	behavior: &cite_core::CitationBehavior,
+	annotation_override: Option<cite_core::CitationAnnotation>,
+) -> std::result::Result<(), String> {
+	use cite_core::CitationAnnotation;
+
+	// Get the effective annotation requirement
+	let effective_annotation = behavior.effective_annotation(annotation_override);
+
+	// If FOOTNOTE is required, we need to check if the item has documentation
+	if effective_annotation == CitationAnnotation::Footnote {
+		// For now, we'll assume the item has documentation if it's provided
+		// In a full implementation, we'd need to parse the item to check for doc comments
+		// This is a simplified check - you might want to enhance this
+		if citation.reason.is_none() {
+			return Err(
+				"Citation requires documentation (CITE_ANNOTATION=FOOTNOTE) but no reason provided. \
+				Add a 'reason = \"...\"' attribute or set CITE_ANNOTATION=ANY".to_string()
+			);
+		}
+	}
+
+	Ok(())
 }
 
 /// Try to execute source expressions that we can handle during macro expansion
@@ -822,10 +855,10 @@ fn execute_http_source_validation(
 					)
 				} else {
 					format!(
-                        "HTTP citation content has changed!\n         URL: {}\n         Referenced: {}\n         Current: {}",
+                        "HTTP citation content has changed!\n         URL: {}\n         Current: {}\n         Referenced: {}",
                         comparison.current().source_url.as_str(),
-                        comparison.referenced().content,
-                        comparison.current().content
+                        comparison.current().content,
+                        comparison.referenced().content
                     )
 				};
 
