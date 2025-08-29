@@ -13,13 +13,8 @@ pub fn check_annotation_requirements(
 
 	if behavior.requires_effective_annotation(annotation) && citation.reason.is_none() {
 		return Err(format!(
-			"Citation requires documentation (global {:?} annotation is default and local {:?} annotation is provided) but no reason provided. \
-			Add a 'reason = \"...\"' attribute or enable the annotationless feature\
-			Evaluated requires effective {:?} annotation and {:?} annotation is provided",
-			behavior,
-			annotation,
-			behavior.requires_effective_annotation(annotation),
-			citation.reason.is_none(),
+			"Citation requires documentation but no annotation provided. \
+			Add a 'reason = \"...\"' attribute or enable the annotationless feature",
 		));
 	}
 	Ok(())

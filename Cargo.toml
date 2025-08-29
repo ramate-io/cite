@@ -10,6 +10,8 @@ members = [
   "tests/no-std-bin",
   "tests/embedded-lib",
   "tests/embedded-bin",
+  "tests/test",
+  "tests/silent"
   
 ]
 

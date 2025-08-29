@@ -1,7 +1,0 @@
-error: Citation requires documentation (footnote annotation is default) but no reason provided. Add a 'reason = "..."' attribute or enable the annotationless feature
- --> tests/ui/footnote-fail/missing_reason.rs:5:1
-  |
-5 | #[cite(mock, same = "content")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: this error originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)

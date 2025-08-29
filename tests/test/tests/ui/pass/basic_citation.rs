@@ -27,16 +27,10 @@ impl TestStruct {
 	fn get_field(&self) -> i32 {
 		self.field
 	}
-
-	#[cite(mock, changed = ("old method", "new method"), level = "SILENT", reason = "test reason")]
-	fn set_field(&mut self, value: i32) {
-		self.field = value;
-	}
 }
 
 fn main() {
 	test_function();
 	let mut test_struct = TestStruct::new(42);
 	let _field_value = test_struct.get_field();
-	test_struct.set_field(100);
 }

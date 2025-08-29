@@ -1,5 +1,5 @@
 error: cite attribute can only be applied to functions, structs, enums, traits, impl blocks, or modules
- --> tests/ui/fail/wrong_target.rs:7:1
+ --> tests/ui/fail-syntax/wrong_target.rs:7:1
   |
 7 | const INVALID_TARGET: i32 = 42;
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

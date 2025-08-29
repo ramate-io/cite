@@ -9,7 +9,7 @@ mod test_module {
 	}
 }
 
-#[cite(mock, changed = ("module content", "updated module content"), reason = "Module API evolution")]
+#[cite(mock, same = "module content", reason = "Module API evolution")]
 mod evolving_module {
 	pub struct ModuleStruct;
 }

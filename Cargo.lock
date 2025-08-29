@@ -291,6 +291,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-silent-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
+ "thiserror 1.0.69",
+ "trybuild",
+]
+
+[[package]]
 name = "cite-test"
 version = "0.0.1"
 dependencies = [
