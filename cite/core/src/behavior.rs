@@ -79,9 +79,10 @@ impl CitationBehavior {
 		&self,
 		local_annotation: Option<CitationAnnotation>,
 	) -> bool {
-		match (self.global.allows_local_overrides(), local_annotation) {
-			(true, Some(local)) => local == CitationAnnotation::Any, // Local override allowed and provided
-			_ => self.annotation == CitationAnnotation::Footnote,    // Use global annotation
+		match (self.global.allows_local_overrides(), local_annotation, self.annotation) {
+			(true, Some(CitationAnnotation::Any), _) => false, // Local override allowed and provided
+			(false, _, CitationAnnotation::Any) => false,      // Global annotation is Any
+			_ => true,                                         // Use global annotation
 		}
 	}
 
@@ -165,5 +166,18 @@ mod tests {
 		assert!(!behavior.should_fail_compilation(Some(CitationLevel::Warn)));
 		assert!(!behavior.should_fail_compilation(Some(CitationLevel::Silent)));
 		assert!(!behavior.should_fail_compilation(None)); // Uses global Warn
+	}
+
+	#[test]
+	fn test_requires_effective_annotation() {
+		let behavior = CitationBehavior::new(
+			CitationLevel::Warn,
+			CitationAnnotation::Any,
+			CitationGlobal::Lenient,
+		);
+
+		assert!(!behavior.requires_effective_annotation(Some(CitationAnnotation::Any)));
+		assert!(behavior.requires_effective_annotation(Some(CitationAnnotation::Footnote)));
+		assert!(!behavior.requires_effective_annotation(None));
 	}
 }

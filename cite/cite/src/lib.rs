@@ -203,7 +203,7 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Represents a parsed citation with all its attributes
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Citation {
 	source_expr: Expr,
 	reason: Option<String>,

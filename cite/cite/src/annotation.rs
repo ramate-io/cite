@@ -12,10 +12,15 @@ pub fn check_annotation_requirements(
 	};
 
 	if behavior.requires_effective_annotation(annotation) && citation.reason.is_none() {
-		return Err(
-			"Citation requires documentation (footnote annotation is default) but no reason provided. \
-			Add a 'reason = \"...\"' attribute or enable the annotationless feature".to_string()
-		);
+		return Err(format!(
+			"Citation requires documentation (global {:?} annotation is default and local {:?} annotation is provided) but no reason provided. \
+			Add a 'reason = \"...\"' attribute or enable the annotationless feature\
+			Evaluated requires effective {:?} annotation and {:?} annotation is provided",
+			behavior,
+			annotation,
+			behavior.requires_effective_annotation(annotation),
+			citation.reason.is_none(),
+		));
 	}
 	Ok(())
 }
