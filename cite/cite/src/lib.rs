@@ -710,7 +710,7 @@ fn attempt_macro_expansion_validation(
 	let behavior = CitationBehavior::from_features();
 
 	// Check annotation requirements first
-	if let Err(annotation_error) = annotation::check_annotation_requirements(citation) {
+	if let Err(annotation_error) = annotation::check_annotation_requirements(citation, &behavior) {
 		return Err(annotation_error);
 	}
 

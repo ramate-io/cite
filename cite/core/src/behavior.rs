@@ -74,6 +74,17 @@ impl CitationBehavior {
 		}
 	}
 
+	/// Checks if an annotation is required
+	pub fn requires_effective_annotation(
+		&self,
+		local_annotation: Option<CitationAnnotation>,
+	) -> bool {
+		match (self.global.allows_local_overrides(), local_annotation) {
+			(true, Some(local)) => local == CitationAnnotation::Any, // Local override allowed and provided
+			_ => self.annotation == CitationAnnotation::Footnote,    // Use global annotation
+		}
+	}
+
 	/// Check if a citation validation issue should be reported
 	pub fn should_report(&self, local_level: Option<CitationLevel>) -> bool {
 		self.effective_level(local_level).should_emit()
