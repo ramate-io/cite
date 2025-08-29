@@ -14,14 +14,11 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
-default = ["level-warn", "annotation-any", "global-lenient"]
-level-error = []
-level-warn = []
-level-silent = []
-annotation-footnote = []
-annotation-any = []
-global-strict = []
-global-lenient = []
+default = []
+annotationless = []
+warn = []
+silent = []
+lenient = []
 
 [dev-dependencies]
 tempfile = { workspace = true }

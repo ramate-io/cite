@@ -3,19 +3,19 @@
 use cite::cite;
 
 // Basic fragment citation - explicitly specify fragment
-#[cite(http, url = "https://example.com", fragment = "introduction")]
+#[cite(http, url = "https://example.com", fragment = "introduction", reason = "test reason")]
 fn test_explicit_fragment() {
 	println!("This function cites a specific document fragment");
 }
 
 // Auto-fragment detection from URL
-#[cite(http, url = "https://example.com#getting-started")]
+#[cite(http, url = "https://example.com#getting-started", reason = "test reason")]
 fn test_auto_fragment_detection() {
 	println!("This function auto-detects fragment from URL");
 }
 
 // Manual auto mode
-#[cite(http, url = "https://example.com#installation", match_type = "auto")]
+#[cite(http, url = "https://example.com#installation", match_type = "auto", reason = "test reason")]
 fn test_manual_auto_mode() {
 	println!("This function uses explicit auto mode");
 }
@@ -32,7 +32,7 @@ fn test_fragment_with_behavior() {
 }
 
 // CSS selector still works alongside fragments
-#[cite(http, url = "https://example.com", selector = "h1")]
+#[cite(http, url = "https://example.com", selector = "h1", reason = "test reason")]
 fn test_css_selector_without_fragment() {
 	println!("This function uses CSS selector matching");
 }

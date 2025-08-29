@@ -2,11 +2,11 @@
 
 use cite::cite;
 
-#[cite(mock, changed = ("old content", "new content"), level = "SILENT")]
+#[cite(mock, changed = ("old content", "new content"), level = "SILENT", reason = "test reason")]
 fn function_with_silent_diff() {
-    println!("This should compile despite diff because level is SILENT");
+	println!("This should compile despite diff because level is SILENT");
 }
 
 fn main() {
-    function_with_silent_diff();
+	function_with_silent_diff();
 }

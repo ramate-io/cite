@@ -2,22 +2,27 @@
 
 use cite::cite;
 
-#[cite(http, url = "https://example.com", selector = "h1")]
+#[cite(http, url = "https://example.com", selector = "h1", reason = "test reason")]
 fn test_function_with_http_citation() {
 	println!("This function has an HTTP citation");
 }
 
-#[cite(http, url = "https://example.com", pattern = r#""version":\s*"([^"]+)""#)]
+#[cite(
+	http,
+	url = "https://example.com",
+	pattern = r#""version":\s*"([^"]+)""#,
+	reason = "test reason"
+)]
 fn test_function_with_api_citation() {
 	println!("This function cites an API endpoint");
 }
 
-#[cite(http, url = "https://example.com", match_type = "full")]
+#[cite(http, url = "https://example.com", match_type = "full", reason = "test reason")]
 fn test_function_with_full_document() {
 	println!("This function cites a full document");
 }
 
-#[cite(http, url = "https://example.com", selector = "h1", level = "WARN")]
+#[cite(http, url = "https://example.com", selector = "h1", level = "WARN", reason = "test reason")]
 fn test_function_with_level() {
 	println!("This function has HTTP citation with warning level");
 }

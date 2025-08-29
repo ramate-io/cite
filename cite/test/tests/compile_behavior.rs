@@ -16,31 +16,39 @@ fn test_compile_fail() {
 fn test_footnote_annotation_requirements() {
 	let t = trybuild::TestCases::new();
 
-	// Test that citations fail when annotation-footnote feature is enabled but no reason provided
-	t.compile_fail_with(
-		"tests/ui/footnote-fail/*.rs",
-		Vec::<(String, String)>::new(),
-		vec!["cite/annotation-footnote"],
-	);
+	// Test that citations fail when no reason provided (default behavior)
+	t.compile_fail("tests/ui/footnote-fail/*.rs");
 
-	// Test that citations pass when annotation-footnote feature is enabled and reason is provided
-	t.pass_with(
-		"tests/ui/footnote-pass/*.rs",
-		Vec::<(String, String)>::new(),
-		vec!["cite/annotation-footnote"],
-	);
+	// Test that citations pass when reason is provided
+	t.pass("tests/ui/footnote-pass/*.rs");
 }
 
 #[test]
 fn test_global_behavior_strict() {
 	let t = trybuild::TestCases::new();
 
-	// Test that local overrides are ignored when global-strict feature is enabled
-	t.compile_fail_with(
-		"tests/ui/global-strict-fail/*.rs",
+	// Test that local overrides are ignored when using default strict behavior
+	t.compile_fail("tests/ui/global-strict-fail/*.rs");
+}
+
+#[test]
+fn test_annotationless_feature() {
+	let t = trybuild::TestCases::new();
+
+	// Test that citations pass without reason when annotationless feature is enabled
+	t.pass_with(
+		"tests/ui/annotationless-pass/*.rs",
 		Vec::<(String, String)>::new(),
-		vec!["cite/level-warn", "cite/global-strict"],
+		vec!["cite/annotationless"],
 	);
+}
+
+#[test]
+fn test_lenient_feature() {
+	let t = trybuild::TestCases::new();
+
+	// Test that local overrides are respected when lenient feature is enabled
+	t.pass_with("tests/ui/lenient-pass/*.rs", Vec::<(String, String)>::new(), vec!["cite/lenient"]);
 }
 
 // Individual test cases for more granular control

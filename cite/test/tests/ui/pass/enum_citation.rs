@@ -3,7 +3,7 @@
 use cite::cite;
 
 /// Test enum with citation
-#[cite(mock, same = "test enum with citation")]
+#[cite(mock, same = "test enum with citation", reason = "test reason")]
 #[derive(Debug)]
 enum TestEnum {
 	Variant1,
@@ -12,7 +12,7 @@ enum TestEnum {
 }
 
 /// Error enum with citation
-#[cite(mock, changed = ("old error", "new error"), level = "SILENT")]
+#[cite(mock, changed = ("old error", "new error"), level = "SILENT", reason = "test reason")]
 #[derive(Debug)]
 enum ErrorType {
 	NetworkError,

@@ -30,34 +30,27 @@ impl CitationBehavior {
 	/// Load configuration from feature flags
 	pub fn from_features() -> Self {
 		// Check feature flags for citation level
-		#[cfg(feature = "level-error")]
-		let level = CitationLevel::Error;
-		#[cfg(feature = "level-warn")]
+		// Default is Error (no feature flag needed)
+		#[cfg(feature = "warn")]
 		let level = CitationLevel::Warn;
-		#[cfg(feature = "level-silent")]
+		#[cfg(feature = "silent")]
 		let level = CitationLevel::Silent;
-		#[cfg(not(any(
-			feature = "level-error",
-			feature = "level-warn",
-			feature = "level-silent"
-		)))]
-		let level = CitationLevel::Warn; // Default to warn
+		#[cfg(not(any(feature = "warn", feature = "silent")))]
+		let level = CitationLevel::Error; // Default to error
 
 		// Check feature flags for annotation requirement
-		#[cfg(feature = "annotation-footnote")]
-		let annotation = CitationAnnotation::Footnote;
-		#[cfg(feature = "annotation-any")]
+		// Default is Footnote (no feature flag needed)
+		#[cfg(feature = "annotationless")]
 		let annotation = CitationAnnotation::Any;
-		#[cfg(not(any(feature = "annotation-footnote", feature = "annotation-any")))]
-		let annotation = CitationAnnotation::Any; // Default to any
+		#[cfg(not(feature = "annotationless"))]
+		let annotation = CitationAnnotation::Footnote; // Default to footnote
 
 		// Check feature flags for global behavior
-		#[cfg(feature = "global-strict")]
-		let global = CitationGlobal::Strict;
-		#[cfg(feature = "global-lenient")]
+		// Default is Strict (no feature flag needed)
+		#[cfg(feature = "lenient")]
 		let global = CitationGlobal::Lenient;
-		#[cfg(not(any(feature = "global-strict", feature = "global-lenient")))]
-		let global = CitationGlobal::Lenient; // Default to lenient
+		#[cfg(not(feature = "lenient"))]
+		let global = CitationGlobal::Strict; // Default to strict
 
 		Self { level, annotation, global }
 	}

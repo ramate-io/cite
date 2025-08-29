@@ -15,15 +15,6 @@ thiserror = { workspace = true }
 cite-core = { workspace = true }
 cite = { workspace = true }
 
-[features]
-level-error = []
-level-warn = []
-level-silent = []
-annotation-footnote = []
-annotation-any = []
-global-strict = []
-global-lenient = []
-
 [dev-dependencies]
 trybuild = { workspace = true }
 
