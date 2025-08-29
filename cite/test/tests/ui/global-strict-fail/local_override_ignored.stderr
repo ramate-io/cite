@@ -1,9 +1,7 @@
-error: Citation content has changed!
-                Referenced: old content
-                Current: new content
+error: Citation requires documentation (footnote annotation is default) but no reason provided. Add a 'reason = "..."' attribute or enable the annotationless feature
  --> tests/ui/global-strict-fail/local_override_ignored.rs:5:1
   |
-5 | #[cite(mock, changed = ("old content", "new content"), level = "WARN")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 | #[cite(mock, same = "content", annotation = "ANY")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
   = note: this error originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)
