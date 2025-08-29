@@ -24,11 +24,11 @@ fn test_footnote_annotation_requirements() {
 }
 
 #[test]
-fn test_global_behavior_strict() {
+fn test_strict_fail() {
 	let t = trybuild::TestCases::new();
 
 	// Test that local overrides are ignored when using default strict behavior
-	t.compile_fail("tests/ui/global-strict-fail/*.rs");
+	t.compile_fail("tests/ui/strict-fail/*.rs");
 }
 
 #[test]
