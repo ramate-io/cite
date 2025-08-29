@@ -32,6 +32,18 @@ fn test_strict_fail() {
 }
 
 #[test]
+fn test_lenient_footnote_pass() {
+	let t = trybuild::TestCases::new();
+
+	// Test that citations pass when annotation-footnote feature is enabled and a reason is provided
+	t.pass_with(
+		"tests/ui/lenient-footnote-pass/*.rs",
+		Vec::<(String, String)>::new(),
+		vec!["cite/lenient"],
+	);
+}
+
+#[test]
 fn test_annotationless_feature() {
 	let t = trybuild::TestCases::new();
 
