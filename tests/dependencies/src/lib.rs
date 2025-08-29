@@ -6,19 +6,24 @@
 use cite::cite;
 
 /// Simple function with a citation
-#[cite(mock, same = "test content")]
+#[cite(mock, same = "test content", reason = "test reason")]
 pub fn test_function() {
 	println!("Hello world");
 }
 
 /// Another function with a citation
-#[cite(mock, changed = ("old", "new"), level = "SILENT")]
+#[cite(mock, same = "another function", level = "SILENT", reason = "test reason")]
 pub fn another_function() {
 	println!("Another function");
 }
 
 /// A function that cites an httpbin source
-#[cite(http, url = "https://jsonplaceholder.typicode.com/todos/1", match_type = "full")]
+#[cite(
+	http,
+	url = "https://jsonplaceholder.typicode.com/todos/1",
+	match_type = "full",
+	reason = "test reason"
+)]
 pub fn jsonplaceholder_function() {
 	println!("jsonplaceholder function");
 }
