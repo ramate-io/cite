@@ -611,8 +611,6 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 		proc_macro2::Span::call_site(),
 	);
 
-	println!("validation_result: {:?}", validation_result);
-
 	// Generate code based on the validation result from macro expansion
 	match validation_result {
 		Ok(None) => {
@@ -638,7 +636,6 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 			}
 		}
 		Ok(Some(warning_msg)) => {
-			println!("warning_msg: {}", warning_msg);
 			// Validation failed but should only warn
 			if is_keyword_syntax {
 				quote! {
@@ -716,8 +713,6 @@ fn attempt_macro_expansion_validation(
 
 	// Try to handle common source patterns
 	if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
-		println!("result: {:?}", result);
-		println!("annotation_result: {:?}", annotation_result);
 		return match (result, annotation_result) {
 			// if also an annotation result, join them together
 			(Ok(Some(result)), Some(annotation_result)) => {

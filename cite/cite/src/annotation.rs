@@ -22,7 +22,6 @@ pub fn check_annotation_requirements(
 		let effective_level = behavior.effective_level(citation_level);
 
 		// Output the error message
-		println!("effective_level: {:?}", effective_level);
 		level_output(
 			"Citation requires documentation but no annotation provided. \
 			Add a 'reason = \"...\"' attribute or enable the annotationless feature"
