@@ -122,6 +122,8 @@ use syn::{
 	ItemMod, ItemStruct, ItemTrait, Lit, Result, Token,
 };
 mod annotation;
+mod level;
+
 /// Mock source parsing and construction
 ///
 /// This module handles the parsing of mock source syntax and construction of
@@ -208,7 +210,6 @@ struct Citation {
 	source_expr: Expr,
 	reason: Option<String>,
 	level: Option<String>,
-	#[allow(dead_code)]
 	annotation: Option<String>,
 	// For keyword syntax, store the raw arguments
 	raw_args: Option<Vec<Expr>>,
@@ -610,6 +611,8 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 		proc_macro2::Span::call_site(),
 	);
 
+	println!("validation_result: {:?}", validation_result);
+
 	// Generate code based on the validation result from macro expansion
 	match validation_result {
 		Ok(None) => {
@@ -635,26 +638,25 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 			}
 		}
 		Ok(Some(warning_msg)) => {
+			println!("warning_msg: {}", warning_msg);
 			// Validation failed but should only warn
 			if is_keyword_syntax {
 				quote! {
 					#reason_comment
 					// Citation validation warning
-					const _: () = {
-						const _WARNING: &str = #warning_msg;
-						()
-					};
+					#[deprecated(note = #warning_msg)]
+					const fn _citation_warning() {}
+					const _: () = _citation_warning();
 				}
 			} else {
 				quote! {
 					#reason_comment
 					// Citation validation warning
-					const _: () = {
-						const _WARNING: &str = #warning_msg;
-						()
-					};
+					#[deprecated(note = #warning_msg)]
+					const fn _citation_warning() {}
+					const _: () = _citation_warning();
 
-					// Include source to avoid unused import warnings
+					// Include source to avoid unused import warnings even when erroring
 					#[allow(dead_code)]
 					fn #use_source_fn_name() {
 						let _source = #source_expr;
@@ -710,13 +712,22 @@ fn attempt_macro_expansion_validation(
 	let behavior = CitationBehavior::from_features();
 
 	// Check annotation requirements first
-	if let Err(annotation_error) = annotation::check_annotation_requirements(citation, &behavior) {
-		return Err(annotation_error);
-	}
+	let annotation_result = annotation::check_annotation_requirements(citation, &behavior)?;
 
 	// Try to handle common source patterns
 	if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
-		return result;
+		println!("result: {:?}", result);
+		println!("annotation_result: {:?}", annotation_result);
+		return match (result, annotation_result) {
+			// if also an annotation result, join them together
+			(Ok(Some(result)), Some(annotation_result)) => {
+				Ok(Some(format!("{}\n{}", result, annotation_result)))
+			}
+			(Ok(Some(result)), None) => Ok(Some(result)),
+			(Ok(None), Some(annotation_result)) => Ok(Some(annotation_result)),
+			(Ok(None), None) => Ok(None),
+			(Err(error), _) => Err(error),
+		};
 	}
 
 	// If we can't execute the source during macro expansion, assume it's valid
