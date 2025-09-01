@@ -1,0 +1,8 @@
+warning: use of deprecated function `function_with_local_warn_level::_::_citation_warning`: Citation requires documentation but no annotation provided. Add a 'reason = "..."' attribute or enable the annotationless feature
+ --> tests/ui/fail-invalid-warn/local_override_ignored.rs:5:1
+  |
+5 | #[cite(mock, same = "content", annotation = "ANY")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+  = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)

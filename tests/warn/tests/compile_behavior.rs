@@ -4,7 +4,7 @@
 fn test_compile_pass() {
 	let t = trybuild::TestCases::new();
 	t.pass("tests/ui/pass/*.rs");
-	t.pass("tests/ui/fail-invalid-silently/*.rs");
+	t.warn("tests/ui/fail-invalid-warn/*.rs");
 }
 
 #[test]
@@ -22,7 +22,7 @@ fn test_compile_fail_syntax() {
 #[test]
 fn test_compile_fail_invalid() {
 	let t = trybuild::TestCases::new();
-	t.pass("tests/ui/fail-invalid-silently/*.rs");
+	t.warn("tests/ui/fail-invalid-warn/*.rs");
 }
 
 // Individual test cases for more granular control
@@ -65,17 +65,17 @@ fn test_module_citation_compiles() {
 #[test]
 fn test_changed_content_error_fails() {
 	let t = trybuild::TestCases::new();
-	t.pass("tests/ui/fail-invalid-silently/changed_content_error.rs");
+	t.warn("tests/ui/fail-invalid-warn/changed_content_error.rs");
 }
 
 #[test]
 fn test_local_override_ignored() {
 	let t = trybuild::TestCases::new();
-	t.pass("tests/ui/fail-invalid-silently/local_override_ignored.rs");
+	t.warn("tests/ui/fail-invalid-warn/local_override_ignored.rs");
 }
 
 #[test]
 fn test_missing_reason_fails() {
 	let t = trybuild::TestCases::new();
-	t.pass("tests/ui/fail-invalid-silently/missing_reason.rs");
+	t.warn("tests/ui/fail-invalid-warn/missing_reason.rs");
 }

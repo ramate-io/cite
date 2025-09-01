@@ -1,0 +1,10 @@
+warning: use of deprecated function `function_that_should_fail_compilation::_::_citation_warning`: Citation content has changed!
+                  Referenced: old content
+                  Current: new content
+ --> tests/ui/fail-invalid-warn/changed_content_error.rs:5:1
+  |
+5 | #[cite(mock, changed = ("old content", "new content"), level = "ERROR", reason = "test reason")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+  = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)
