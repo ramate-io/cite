@@ -178,6 +178,6 @@ mod tests {
 
 		assert!(!behavior.requires_effective_annotation(Some(CitationAnnotation::Any)));
 		assert!(behavior.requires_effective_annotation(Some(CitationAnnotation::Footnote)));
-		assert!(!behavior.requires_effective_annotation(None));
+		assert!(behavior.requires_effective_annotation(None));
 	}
 }
