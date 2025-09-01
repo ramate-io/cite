@@ -13,16 +13,27 @@ pub struct LineRange {
 impl LineRange {
 	const LINE_RANGE_PATTERN: &str = r"^L(\d+)(-L(\d+))?$";
 
-	pub fn new(start: usize, end: usize) -> Result<Self, GitSourceError> {
-		if start > end || start == 0 {
+	/// Create a new LineRange with validation
+	///
+	/// This is the only public constructor. It ensures that:
+	/// - start > 0 (line numbers start at 1)
+	/// - end >= start (end line must be greater than or equal to start line)
+	pub fn try_new(start: usize, end: usize) -> Result<Self, GitSourceError> {
+		if start == 0 {
+			return Err(GitSourceError::InvalidPathPattern(
+				"Line numbers must start at 1, got 0".to_string(),
+			));
+		}
+		if end < start {
 			return Err(GitSourceError::InvalidPathPattern(format!(
-				"Invalid line range: {}:{}",
-				start, end
+				"Invalid line range: end line {} is less than start line {}",
+				end, start
 			)));
 		}
 		Ok(Self { start, end })
 	}
 
+	/// Parse a line range from a string like "L1-L10" or "L5"
 	pub fn try_from_string(range_str: &str) -> Result<Self, GitSourceError> {
 		// match to the pattern and get the capture groups
 		let re = Regex::new(Self::LINE_RANGE_PATTERN).map_err(|_| {
@@ -56,14 +67,14 @@ impl LineRange {
 		})?;
 
 		// Check if we have a range (two numbers) or just a single line
-		// For "L5", caps.len() == 2 (Group 0: "L5", Group 1: "5")
-		// For "L1-L10", caps.len() == 4 (Group 0: "L1-L10", Group 1: "1", Group 2: "-L10", Group 3: "10")
-		if caps.len() <= 2 {
-			// Single line: L5
-			return Self::new(start, start);
+		// For "L5": Group 0: "L5", Group 1: "5", Group 2: None, Group 3: None
+		// For "L1-L10": Group 0: "L1-L10", Group 1: "1", Group 2: "-L10", Group 3: "10"
+		if caps.get(2).is_none() {
+			// Single line: L5 (Group 2 doesn't exist)
+			return Self::try_new(start, start);
 		}
 
-		// Range: L1-L10
+		// Range: L1-L10 (Group 2 exists)
 		let end_capture_string = caps
 			.get(3)
 			.ok_or_else(|| {
@@ -80,7 +91,15 @@ impl LineRange {
 			))
 		})?;
 
-		Self::new(start, end)
+		// Validate that end >= start
+		if end < start {
+			return Err(GitSourceError::InvalidPathPattern(format!(
+				"Invalid line range: end line {} is less than start line {}",
+				end, start
+			)));
+		}
+
+		Self::try_new(start, end)
 	}
 }
 
@@ -167,14 +186,14 @@ mod tests {
 
 	#[test]
 	fn test_line_range_validation() -> Result<(), anyhow::Error> {
-		// Test that LineRange::new validates correctly
-		assert!(LineRange::new(1, 10).is_ok());
-		assert!(LineRange::new(5, 5).is_ok());
+		// Test that LineRange::try_new validates correctly
+		assert!(LineRange::try_new(1, 10).is_ok());
+		assert!(LineRange::try_new(5, 5).is_ok());
 
 		// Test invalid ranges
-		assert!(LineRange::new(10, 5).is_err()); // start > end
-		assert!(LineRange::new(0, 5).is_err());  // start == 0
-		assert!(LineRange::new(0, 0).is_err());  // start == 0
+		assert!(LineRange::try_new(10, 5).is_err()); // start > end
+		assert!(LineRange::try_new(0, 5).is_err()); // start == 0
+		assert!(LineRange::try_new(0, 0).is_err()); // start == 0
 
 		Ok(())
 	}

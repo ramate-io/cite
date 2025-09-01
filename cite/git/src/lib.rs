@@ -644,7 +644,7 @@ mod tests {
 		// Test path with line range
 		let pattern = PathPattern::try_new("src/lib.rs#L1-L10")?;
 		assert_eq!(pattern.path, "src/lib.rs");
-		assert_eq!(pattern.line_range, Some(LineRange::new(1, 10)?));
+		assert_eq!(pattern.line_range, Some(LineRange::try_new(1, 10)?));
 		assert_eq!(pattern.glob, None);
 
 		// Test glob pattern
