@@ -2,9 +2,9 @@ Alpha
 Bravo
 Charlie
 Delta
-Echo
-Foxtrot
-Gamma
-Halifax
-Istanbul
-Juniper
+Epsom
+Fox
+Golf
+Hotel
+India
+Juliet
