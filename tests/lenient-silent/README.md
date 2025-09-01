@@ -1,0 +1,2 @@
+# `lenient-silent`
+This directory is intended to test issues with enabling both the `lenient` and `silent` flags ad hoc. None have yet been reported, so it is assumed the [`cite-core`](../../cite/core/README.md) unit tests should correctly cover and that the [`lenient`](../lenient/) e2e tests should be demonstrative. 

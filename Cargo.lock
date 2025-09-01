@@ -283,6 +283,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-lenient-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
+ "thiserror 1.0.69",
+ "trybuild",
+]
+
+[[package]]
 name = "cite-no-std-bin-test"
 version = "0.0.1"
 dependencies = [

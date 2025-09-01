@@ -13,7 +13,8 @@ members = [
   "tests/test",
   "tests/silent",
   "tests/warn",
-  "tests/annotationless"
+  "tests/annotationless",
+  "tests/lenient"
   
 ]
 
