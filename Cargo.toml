@@ -12,7 +12,8 @@ members = [
   "tests/embedded-bin",
   "tests/test",
   "tests/silent",
-  "tests/warn"
+  "tests/warn",
+  "tests/annotationless"
   
 ]
 
