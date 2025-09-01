@@ -121,6 +121,24 @@ use syn::{
 	parse_macro_input, parse_quote, punctuated::Punctuated, Expr, ItemEnum, ItemFn, ItemImpl,
 	ItemMod, ItemStruct, ItemTrait, Lit, Result, Token,
 };
+
+// Counter for generating unique validation constant names
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static VALIDATION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+static SOURCE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn next_validation_id() -> usize {
+	VALIDATION_COUNTER.fetch_add(1, Ordering::SeqCst)
+}
+
+fn next_source_id() -> usize {
+	SOURCE_COUNTER.fetch_add(1, Ordering::SeqCst)
+}
+
+mod annotation;
+mod level;
+
 /// Mock source parsing and construction
 ///
 /// This module handles the parsing of mock source syntax and construction of
@@ -202,12 +220,11 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 }
 
 /// Represents a parsed citation with all its attributes
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Citation {
 	source_expr: Expr,
 	reason: Option<String>,
 	level: Option<String>,
-	#[allow(dead_code)]
 	annotation: Option<String>,
 	// For keyword syntax, store the raw arguments
 	raw_args: Option<Vec<Expr>>,
@@ -504,9 +521,8 @@ fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_mac
 /// Handle citation on a struct
 fn handle_struct_citation(citation: Citation, item_struct: ItemStruct) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
-	let struct_name = &item_struct.ident;
 	let validation_const_name = syn::Ident::new(
-		&format!("_CITE_VALIDATION_{}", struct_name),
+		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
@@ -520,9 +536,8 @@ fn handle_struct_citation(citation: Citation, item_struct: ItemStruct) -> proc_m
 /// Handle citation on a trait
 fn handle_trait_citation(citation: Citation, item_trait: ItemTrait) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
-	let trait_name = &item_trait.ident;
 	let validation_const_name = syn::Ident::new(
-		&format!("_CITE_VALIDATION_{}", trait_name),
+		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
@@ -537,9 +552,9 @@ fn handle_trait_citation(citation: Citation, item_trait: ItemTrait) -> proc_macr
 fn handle_impl_citation(citation: Citation, item_impl: ItemImpl) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
 
-	// Generate a unique const name for this impl block
+	// Use counter for unique const name
 	let validation_const_name = syn::Ident::new(
-		&format!("_CITE_VALIDATION_IMPL_{}", std::ptr::addr_of!(item_impl) as usize),
+		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
@@ -553,9 +568,8 @@ fn handle_impl_citation(citation: Citation, item_impl: ItemImpl) -> proc_macro2:
 /// Handle citation on a module
 fn handle_mod_citation(citation: Citation, item_mod: ItemMod) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
-	let mod_name = &item_mod.ident;
 	let validation_const_name = syn::Ident::new(
-		&format!("_CITE_VALIDATION_MOD_{}", mod_name),
+		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
@@ -569,9 +583,9 @@ fn handle_mod_citation(citation: Citation, item_mod: ItemMod) -> proc_macro2::To
 /// Handle citation on an enum
 fn handle_enum_citation(citation: Citation, item_enum: ItemEnum) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
-	let enum_name = &item_enum.ident;
+
 	let validation_const_name = syn::Ident::new(
-		&format!("_CITE_VALIDATION_ENUM_{}", enum_name),
+		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
@@ -605,7 +619,7 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 
 	// Generate a unique function name to ensure the source import is used (only for non-keyword syntax)
 	let use_source_fn_name = syn::Ident::new(
-		&format!("_cite_use_source_{}", std::ptr::addr_of!(*citation) as usize),
+		&format!("_cite_use_source_{}", next_source_id()),
 		proc_macro2::Span::call_site(),
 	);
 
@@ -639,21 +653,19 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 				quote! {
 					#reason_comment
 					// Citation validation warning
-					const _: () = {
-						const _WARNING: &str = #warning_msg;
-						()
-					};
+					#[deprecated(note = #warning_msg)]
+					const fn _citation_warning() {}
+					const _: () = _citation_warning();
 				}
 			} else {
 				quote! {
 					#reason_comment
 					// Citation validation warning
-					const _: () = {
-						const _WARNING: &str = #warning_msg;
-						()
-					};
+					#[deprecated(note = #warning_msg)]
+					const fn _citation_warning() {}
+					const _: () = _citation_warning();
 
-					// Include source to avoid unused import warnings
+					// Include source to avoid unused import warnings even when erroring
 					#[allow(dead_code)]
 					fn #use_source_fn_name() {
 						let _source = #source_expr;
@@ -705,24 +717,24 @@ fn attempt_macro_expansion_validation(
 		None
 	};
 
-	// Load behavior from environment (with defaults)
-	let behavior = CitationBehavior::from_env();
+	// Load behavior from feature flags
+	let behavior = CitationBehavior::from_features();
 
-	// Here's the challenge: we need to execute the user's source expression
-	// during macro expansion. Since we can't directly eval arbitrary expressions,
-	// we have a few options:
-	//
-	// 1. Support specific known source patterns (like what I had before)
-	// 2. Use a plugin system where sources register macro-expansion handlers
-	// 3. Generate runtime validation and accept that errors happen at runtime
-	// 4. Provide const-compatible source implementations
-	//
-	// For now, let's go with option 1 but make it more general by supporting
-	// any source that implements a "macro expansion" trait or pattern
+	// Check annotation requirements first
+	let annotation_result = annotation::check_annotation_requirements(citation, &behavior)?;
 
 	// Try to handle common source patterns
 	if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
-		return result;
+		return match (result, annotation_result) {
+			// if also an annotation result, join them together
+			(Ok(Some(result)), Some(annotation_result)) => {
+				Ok(Some(format!("{}\n{}", result, annotation_result)))
+			}
+			(Ok(Some(result)), None) => Ok(Some(result)),
+			(Ok(None), Some(annotation_result)) => Ok(Some(annotation_result)),
+			(Ok(None), None) => Ok(None),
+			(Err(error), _) => Err(error),
+		};
 	}
 
 	// If we can't execute the source during macro expansion, assume it's valid
@@ -822,10 +834,10 @@ fn execute_http_source_validation(
 					)
 				} else {
 					format!(
-                        "HTTP citation content has changed!\n         URL: {}\n         Referenced: {}\n         Current: {}",
+                        "HTTP citation content has changed!\n         URL: {}\n         Current: {}\n         Referenced: {}",
                         comparison.current().source_url.as_str(),
-                        comparison.referenced().content,
-                        comparison.current().content
+                        comparison.current().content,
+                        comparison.referenced().content
                     )
 				};
 

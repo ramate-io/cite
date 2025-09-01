@@ -1,0 +1,9 @@
+warning: variable does not need to be mutable
+  --> tests/ui/pass/basic_citation.rs:34:6
+   |
+34 |     let mut test_struct = TestStruct::new(42);
+   |         ----^^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` on by default

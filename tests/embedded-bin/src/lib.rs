@@ -3,7 +3,7 @@
 use cite::cite;
 use embedded_hal::digital::OutputPin;
 
-#[cite(mock, same = "embedded binary lib driver")]
+#[cite(mock, same = "embedded binary lib driver", reason = "test reason")]
 pub struct BinaryDriver<PIN> {
 	output_pin: PIN,
 	enabled: bool,
@@ -13,30 +13,30 @@ impl<PIN> BinaryDriver<PIN>
 where
 	PIN: OutputPin,
 {
-	#[cite(mock, same = "binary driver constructor")]
+	#[cite(mock, same = "binary driver constructor", reason = "test reason")]
 	pub fn new(pin: PIN) -> Self {
 		Self { output_pin: pin, enabled: false }
 	}
 
-	#[cite(mock, changed = ("old enable", "new enable"), level = "SILENT")]
+	#[cite(mock, same = "enable", level = "SILENT", reason = "test reason")]
 	pub fn enable(&mut self) -> Result<(), PIN::Error> {
 		self.enabled = true;
 		self.output_pin.set_high()
 	}
 
-	#[cite(mock, same = "disable method")]
+	#[cite(mock, same = "disable method", reason = "test reason")]
 	pub fn disable(&mut self) -> Result<(), PIN::Error> {
 		self.enabled = false;
 		self.output_pin.set_low()
 	}
 
-	#[cite(mock, same = "status check")]
+	#[cite(mock, same = "status check", reason = "test reason")]
 	pub fn is_enabled(&self) -> bool {
 		self.enabled
 	}
 }
 
-#[cite(mock, same = "embedded system state")]
+#[cite(mock, same = "embedded system state", reason = "test reason")]
 pub enum SystemState {
 	Initializing,
 	Running,
@@ -44,19 +44,19 @@ pub enum SystemState {
 	Error(u8),
 }
 
-#[cite(mock, same = "embedded application context")]
+#[cite(mock, same = "embedded application context", reason = "test reason")]
 pub struct AppContext {
 	state: SystemState,
 	tick_count: u32,
 }
 
 impl AppContext {
-	#[cite(mock, same = "app context constructor")]
+	#[cite(mock, same = "app context constructor", reason = "test reason")]
 	pub const fn new() -> Self {
 		Self { state: SystemState::Initializing, tick_count: 0 }
 	}
 
-	#[cite(mock, changed = ("old tick", "new tick"), level = "WARN")]
+	#[cite(mock, same = "tick", level = "WARN", reason = "test reason")]
 	pub fn tick(&mut self) {
 		self.tick_count = self.tick_count.wrapping_add(1);
 
@@ -74,64 +74,64 @@ impl AppContext {
 		}
 	}
 
-	#[cite(mock, same = "state getter")]
+	#[cite(mock, same = "state getter", reason = "test reason")]
 	pub fn get_state(&self) -> &SystemState {
 		&self.state
 	}
 
-	#[cite(mock, same = "uptime getter")]
+	#[cite(mock, same = "uptime getter", reason = "test reason")]
 	pub fn uptime(&self) -> u32 {
 		self.tick_count
 	}
 }
 
-#[cite(mock, same = "embedded utility function")]
+#[cite(mock, same = "embedded utility function", reason = "test reason")]
 pub fn system_delay_cycles(cycles: u32) {
 	// Placeholder for embedded delay function
 	// Demonstrates cite usage in embedded utility context
 	let _ = cycles;
 }
 
-#[cite(mock, same = "embedded GPIO abstraction")]
+#[cite(mock, same = "embedded GPIO abstraction", reason = "test reason")]
 pub mod embedded_gpio {
 	use cite::cite;
 
-	#[cite(mock, same = "embedded pin abstraction")]
+	#[cite(mock, same = "embedded pin abstraction", reason = "test reason")]
 	pub struct EmbeddedPin {
 		#[allow(dead_code)]
 		id: u8,
 	}
 
 	impl EmbeddedPin {
-		#[cite(mock, same = "pin constructor")]
+		#[cite(mock, same = "pin constructor", reason = "test reason")]
 		pub fn new(id: u8) -> Self {
 			Self { id }
 		}
 
-		#[cite(mock, same = "pin set high")]
+		#[cite(mock, same = "pin set high", reason = "test reason")]
 		pub fn set_high(&mut self) {
 			// Placeholder - demonstrates cite in embedded context
 		}
 
-		#[cite(mock, same = "pin set low")]
+		#[cite(mock, same = "pin set low", reason = "test reason")]
 		pub fn set_low(&mut self) {
 			// Placeholder - demonstrates cite in embedded context
 		}
 	}
 
-	#[cite(mock, same = "embedded LED driver")]
+	#[cite(mock, same = "embedded LED driver", reason = "test reason")]
 	pub struct EmbeddedLed {
 		pin: EmbeddedPin,
 		is_on: bool,
 	}
 
 	impl EmbeddedLed {
-		#[cite(mock, same = "LED constructor")]
+		#[cite(mock, same = "LED constructor", reason = "test reason")]
 		pub fn new(pin: EmbeddedPin) -> Self {
 			Self { pin, is_on: false }
 		}
 
-		#[cite(mock, changed = ("old toggle", "new toggle"), level = "SILENT")]
+		#[cite(mock, same = "toggle", level = "SILENT", reason = "test reason")]
 		pub fn toggle(&mut self) {
 			if self.is_on {
 				self.pin.set_low();
@@ -142,7 +142,7 @@ pub mod embedded_gpio {
 			}
 		}
 
-		#[cite(mock, same = "LED state getter")]
+		#[cite(mock, same = "LED state getter", reason = "test reason")]
 		pub fn is_on(&self) -> bool {
 			self.is_on
 		}

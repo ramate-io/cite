@@ -34,5 +34,11 @@ anyhow = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 
+[features]
+annotationless = ["cite-core/annotationless"]
+warn = ["cite-core/warn"]
+silent = ["cite-core/silent"]
+lenient = ["cite-core/lenient"]
+
 [lints]
 workspace = true

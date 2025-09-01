@@ -72,8 +72,8 @@
 //! ```rust
 //! use cite_core::{CitationBehavior, CitationLevel, mock_source_same, Source};
 //!
-//! // Load from environment variables (CITE_LEVEL, CITE_ANNOTATION, CITE_GLOBAL)
-//! let behavior = CitationBehavior::from_env();
+//! // Load from features
+//! let behavior = CitationBehavior::from_features();
 //!
 //! // Create a mock source and get comparison
 //! let source = mock_source_same("example content");

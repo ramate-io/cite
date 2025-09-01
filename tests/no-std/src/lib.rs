@@ -10,14 +10,14 @@
 use cite::cite;
 
 /// Simple function with a citation in no-std context
-#[cite(mock, same = "test content")]
+#[cite(mock, same = "test content", reason = "test reason")]
 pub fn no_std_function() {
 	// In no-std, we can't use println! so we'll use a simple operation
 	let _value = 42;
 }
 
 /// Another function with a citation and different parameters
-#[cite(mock, changed = ("old", "new"), level = "SILENT")]
+#[cite(mock, same = "another no std function", level = "SILENT", reason = "test reason")]
 pub fn another_no_std_function() {
 	let _array = [1, 2, 3, 4, 5];
 }
@@ -29,13 +29,13 @@ pub fn api_reference_function() {
 }
 
 /// Struct with citation in no-std
-#[cite(mock, same = "data structure definition")]
+#[cite(mock, same = "data structure definition", reason = "test reason")]
 pub struct NoStdStruct {
 	pub field: u32,
 }
 
 /// Trait with citation in no-std
-#[cite(mock, same = "trait definition")]
+#[cite(mock, same = "trait definition", reason = "test reason")]
 pub trait NoStdTrait {
 	fn no_std_method(&self) -> u32;
 }
@@ -47,24 +47,24 @@ impl NoStdTrait for NoStdStruct {
 }
 
 /// Module with citation
-#[cite(mock, same = "module content")]
+#[cite(mock, same = "module content", reason = "test reason")]
 pub mod no_std_module {
 	use cite::cite;
 
-	#[cite(mock, same = "inner function")]
+	#[cite(mock, same = "inner function", reason = "test reason")]
 	pub fn inner_function() {
 		let _x = 100;
 	}
 }
 
 /// A more complex example with const generics that should work in no-std
-#[cite(mock, same = "generic const array")]
+#[cite(mock, same = "generic const array", reason = "test reason")]
 pub fn generic_array_function<const N: usize>() -> [u8; N] {
 	[0; N]
 }
 
 /// Test that demonstrates cite works with embedded-style code
-#[cite(mock, same = "embedded pattern")]
+#[cite(mock, same = "embedded pattern", reason = "test reason")]
 pub fn embedded_style_function() -> Option<u32> {
 	// Simulate embedded-style error handling without std
 	if true {

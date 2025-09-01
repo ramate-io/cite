@@ -10,6 +10,11 @@ members = [
   "tests/no-std-bin",
   "tests/embedded-lib",
   "tests/embedded-bin",
+  "tests/test",
+  "tests/silent",
+  "tests/warn",
+  "tests/annotationless",
+  "tests/lenient"
   
 ]
 
@@ -67,6 +72,7 @@ chrono = { version = "0.4.41" }
 reqwest = { version = "0.12", features = ["json"] }
 scraper = "0.20"
 similar = "2.0"
+trybuild = { git = "https://github.com/l-monninger/trybuild", rev = "21f376043b136e3f24f7b5e146890b9496699ee8" }
  
 # internal
 cite-core = { path = "cite/core" }

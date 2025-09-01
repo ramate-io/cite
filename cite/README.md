@@ -8,7 +8,6 @@ This directory contains the core implementation of the cite system for Rust.
 cite/
 ├── cite/           # Main procedural macro crate (user-facing)
 ├── core/           # Core traits and types (lightweight, runtime utilities)
-└── test/           # Comprehensive test suite
 ```
 
 ## Crates
@@ -44,6 +43,9 @@ Lightweight crate containing the fundamental traits and types used by the citati
 - Minimal dependencies
 
 ### `cite-test` - Test Suite
+
+> [!WARNING]
+> **TODO:** this has been moved into [`tests/test`](/tests/test/). It is still named `cite-test`. 
 
 Comprehensive test suite that validates both compile-time and runtime behavior.
 

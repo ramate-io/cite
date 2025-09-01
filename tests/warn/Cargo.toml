@@ -1,0 +1,21 @@
+[package]
+name = "cite-warn-test"
+version = { workspace = true }
+edition  = { workspace = true }
+license  = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+publish = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+cite = { workspace = true, features = ["warn"] }
+
+[dev-dependencies]
+trybuild = { workspace = true }
+
+[lints]
+workspace = true

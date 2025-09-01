@@ -202,6 +202,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-annotationless-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
+ "thiserror 1.0.69",
+ "trybuild",
+]
+
+[[package]]
 name = "cite-cache"
 version = "0.0.1"
 dependencies = [
@@ -273,6 +283,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-lenient-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
+ "thiserror 1.0.69",
+ "trybuild",
+]
+
+[[package]]
 name = "cite-no-std-bin-test"
 version = "0.0.1"
 dependencies = [
@@ -291,12 +311,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-silent-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
+ "thiserror 1.0.69",
+ "trybuild",
+]
+
+[[package]]
 name = "cite-test"
 version = "0.0.1"
 dependencies = [
  "anyhow",
  "cite",
  "cite-core",
+ "thiserror 1.0.69",
+ "trybuild",
+]
+
+[[package]]
+name = "cite-warn-test"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cite",
  "thiserror 1.0.69",
  "trybuild",
 ]
@@ -1992,8 +2032,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "trybuild"
 version = "1.0.110"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e257d7246e7a9fd015fb0b28b330a8d4142151a33f03e6a497754f4b1f6a8e"
+source = "git+https://github.com/l-monninger/trybuild?rev=21f376043b136e3f24f7b5e146890b9496699ee8#21f376043b136e3f24f7b5e146890b9496699ee8"
 dependencies = [
  "glob",
  "serde",
