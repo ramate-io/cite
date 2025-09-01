@@ -1,0 +1,21 @@
+warning: use of deprecated function `_CITE_VALIDATION_MOD_test_module::_citation_warning`: Citation content has changed!
+                  Referenced: old content
+                  Current: new content
+         Citation requires documentation but no annotation provided. Add a 'reason = "..."' attribute or enable the annotationless feature
+ --> tests/ui/pass-lenient/module_function_overrides.rs:6:1
+  |
+6 | #[cite(mock, changed = ("old content", "new content"), level = "WARN")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+  = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: use of deprecated function `function_with_combined_overrides::_::_citation_warning`: Citation content has changed!
+                  Referenced: old content
+                  Current: new content
+  --> tests/ui/pass-lenient/module_function_overrides.rs:26:1
+   |
+26 | #[cite(mock, changed = ("old content", "new content"), level = "WARN", annotation = "ANY")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)

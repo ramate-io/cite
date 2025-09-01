@@ -1,0 +1,11 @@
+warning: use of deprecated function `function_with_warn_override::_::_citation_warning`: Citation content has changed!
+                  Referenced: old content
+                  Current: new content
+         Citation requires documentation but no annotation provided. Add a 'reason = "..."' attribute or enable the annotationless feature
+  --> tests/ui/pass-lenient/level_overrides.rs:12:1
+   |
+12 | #[cite(mock, changed = ("old content", "new content"), level = "WARN")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+   = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)
