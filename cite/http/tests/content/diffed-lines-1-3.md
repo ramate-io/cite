@@ -1,0 +1,10 @@
+Alpha
+Bravo
+Charlie
+Delta
+Echo
+Foxtrot
+Gamma
+Halifax
+Istanbul
+Juniper
