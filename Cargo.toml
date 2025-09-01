@@ -73,6 +73,9 @@ reqwest = { version = "0.12", features = ["json"] }
 scraper = "0.20"
 similar = "2.0"
 trybuild = { git = "https://github.com/l-monninger/trybuild", rev = "21f376043b136e3f24f7b5e146890b9496699ee8" }
+git2 = "0.18"
+glob = "0.3"
+pathdiff = "0.2"
  
 # internal
 cite-core = { path = "cite/core" }
