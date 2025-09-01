@@ -10,11 +10,7 @@ publish = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-anyhow = { workspace = true }
-thiserror = { workspace = true }
 cite = { workspace = true, features = ["annotationless"] }
-
-[dev-dependencies]
 trybuild = { workspace = true }
 
 [lints]
