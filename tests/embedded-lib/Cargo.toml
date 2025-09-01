@@ -13,7 +13,6 @@ rust-version = { workspace = true }
 cite = { workspace = true }
 # Embedded-specific dependencies
 embedded-hal = "1.0"
-nb = "1.1"
 
 [dev-dependencies]
 cargo_metadata = { workspace = true }

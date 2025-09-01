@@ -25,6 +25,7 @@
 
         # An LLVM build environment
         dependencies = with pkgs; [
+          cargo-machete
           protobuf
           grpcurl
           grpcui
