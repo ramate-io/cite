@@ -1,6 +1,6 @@
 pub mod line_range;
 
-use git2::{DiffFormat, DiffOptions, Repository};
+use git2::{DiffFormat, DiffOptions, Repository, Tree};
 pub use line_range::LineRange;
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
@@ -60,13 +60,25 @@ impl PathPattern {
 		Ok(Self { path: file_path, line_range, glob })
 	}
 
-	pub fn try_from_string(string: &str) -> Result<Self, GitSourceError> {
-		let path_pattern = PathPattern::try_new(string)?;
-		Ok(path_pattern)
+	/// Check if this pattern matches a given path
+	pub fn matches(&self, path: &Path) -> bool {
+		if let Some(ref glob_pattern) = self.glob {
+			// For now, just check if the path contains the glob pattern
+			// In a more robust implementation, you'd use proper glob matching
+			path.to_string_lossy().contains(&glob_pattern.replace('*', "").replace('?', ""))
+		} else {
+			// Exact path match
+			path.to_string_lossy() == self.path
+		}
 	}
 
-	pub fn matches(&self, _path: &Path, _line: Option<usize>) -> bool {
-		return true;
+	/// Check if a line number is within the specified range
+	pub fn line_in_range(&self, line_number: usize) -> bool {
+		if let Some(ref range) = self.line_range {
+			line_number >= range.start && line_number <= range.end
+		} else {
+			true // No line range specified, so all lines match
+		}
 	}
 }
 
@@ -74,24 +86,16 @@ impl PathPattern {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitSource {
 	pub id: Id,
-	pub remote: String,
 	pub comparison_revision: String,
-	pub paths: PathPattern,
+	pub path_pattern: PathPattern,
 }
 
 impl GitSource {
-	pub fn try_new(
-		remote: &str,
-		comparison_revision: &str,
-		pattern: &str,
-	) -> Result<Self, GitSourceError> {
+	pub fn try_new(comparison_revision: &str, pattern: &str) -> Result<Self, GitSourceError> {
 		let path_pattern = PathPattern::try_new(pattern)?;
-		Ok(Self {
-			id: Id::new(format!("{}/{}", remote, comparison_revision)),
-			remote: remote.to_string(),
-			comparison_revision: comparison_revision.to_string(),
-			paths: path_pattern,
-		})
+		let id = Id::new(format!("git_{}_{}", comparison_revision, pattern));
+
+		Ok(Self { id, comparison_revision: comparison_revision.to_string(), path_pattern })
 	}
 }
 
@@ -109,92 +113,231 @@ impl Source<GitContent, GitContent, GitDiff> for GitSource {
 	}
 }
 
+/// Git content representation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitContent {
-	revision: String,
-	path: PathPattern,
+	pub revision: String,
+	pub path_pattern: PathPattern,
 }
 
 impl From<GitSource> for GitContent {
 	fn from(source: GitSource) -> Self {
-		GitContent { revision: source.comparison_revision, path: source.paths }
+		GitContent { revision: source.comparison_revision, path_pattern: source.path_pattern }
 	}
 }
 
 impl Content for GitContent {}
 impl Referenced for GitContent {}
 
+/// Git diff representation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitDiff {
-	diff: String,
+	pub diff: String,
+	pub has_changes: bool,
 }
 
 impl Diff for GitDiff {
 	fn is_empty(&self) -> bool {
-		self.diff.is_empty()
+		!self.has_changes
 	}
 }
 
 impl Current<GitContent, GitDiff> for GitContent {
 	fn diff(&self, other: &GitContent) -> Result<GitDiff, SourceError> {
-		// use the repo to form the comparison
+		// Get the comparison tree from the other content's revision
 		let repo = Repository::open(".").map_err(|e| SourceError::Internal(e.into()))?;
 		let obj = repo
-			.revparse_single(other.revision.as_str())
+			.revparse_single(&other.revision)
 			.map_err(|e| SourceError::Internal(e.into()))?;
-		let commit = obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-		let comparison_tree = commit.tree().map_err(|e| SourceError::Internal(e.into()))?;
 
+		let comparison_tree = match obj.kind() {
+			Some(git2::ObjectType::Commit) => {
+				let commit = obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
+				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
+			}
+			Some(git2::ObjectType::Tag) => {
+				let tag = obj.peel_to_tag().map_err(|e| SourceError::Internal(e.into()))?;
+				let target = tag.target().map_err(|e| SourceError::Internal(e.into()))?;
+				let commit =
+					target.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
+				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
+			}
+			Some(git2::ObjectType::Tree) => {
+				obj.peel_to_tree().map_err(|e| SourceError::Internal(e.into()))?
+			}
+			_ => {
+				return Err(SourceError::Internal(
+					format!("Invalid revision type: {}", other.revision).into(),
+				))
+			}
+		};
+
+		// Generate diff between comparison tree and working directory
 		let mut opts = DiffOptions::new();
+		opts.pathspec(&self.path_pattern.path);
+
 		let diff = repo
 			.diff_tree_to_workdir_with_index(Some(&comparison_tree), Some(&mut opts))
 			.map_err(|e| SourceError::Internal(e.into()))?;
 
-		// Capture the entire diff into a string, check if it intersects with the match
+		// Capture the diff output and check for intersections
 		let mut buffer = String::new();
-		let mut intersects = false;
-		let mut errors = Vec::new();
+		let mut has_changes = false;
+
 		diff.print(DiffFormat::Patch, |delta, _hunk, line| {
-			let current_file = delta.new_file();
-			let current_file_path = if let Some(path) = current_file.path() {
-				path
-			} else {
-				errors.push(format!("Current file path not found: {:?}", current_file.path()));
-				return true;
-			};
+			// Check if this delta affects a file that matches our pattern
+			let file_path = delta.new_file().path().or_else(|| delta.old_file().path());
 
-			let comparison_file = delta.old_file();
-			let comparison_file_path = if let Some(path) = comparison_file.path() {
-				path
-			} else {
-				errors
-					.push(format!("Comparison file path not found: {:?}", comparison_file.path()));
-				return true;
-			};
+			if let Some(path) = file_path {
+				if self.path_pattern.matches(path) {
+					has_changes = true;
 
-			let _current_lineno = line.new_lineno();
-			let _comparison_lineno = line.old_lineno();
-
-			let line_range = None; // for now we are not going to match on line range
-
-			if self.path.matches(current_file_path, line_range)
-				|| self.path.matches(comparison_file_path, line_range)
-			{
-				intersects = true;
-			}
-
-			// get the sign of the line diff
-			buffer.push(line.origin());
-			let content = line.content();
-			if let Ok(content) = std::str::from_utf8(content) {
-				buffer.push_str(content);
+					// Add line content if it's within our line range
+					if self.path_pattern.line_in_range(line.new_lineno().unwrap_or(0) as usize)
+						|| self.path_pattern.line_in_range(line.old_lineno().unwrap_or(0) as usize)
+					{
+						// Add the diff line
+						buffer.push(line.origin());
+						if let Ok(content) = std::str::from_utf8(line.content()) {
+							buffer.push_str(content);
+						}
+					}
+				}
 			}
 
 			true
 		})
 		.map_err(|e| SourceError::Internal(e.into()))?;
 
-		let diff = if intersects { buffer } else { String::new() };
-		Ok(GitDiff { diff })
+		Ok(GitDiff { diff: buffer, has_changes })
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use anyhow::Result;
+	use std::path::PathBuf;
+
+	#[test]
+	fn test_path_pattern_parsing() -> Result<(), anyhow::Error> {
+		// Test basic path
+		let pattern = PathPattern::try_new("src/lib.rs")?;
+		assert_eq!(pattern.path, "src/lib.rs");
+		assert_eq!(pattern.line_range, None);
+		assert_eq!(pattern.glob, None);
+
+		// Test path with line range
+		let pattern = PathPattern::try_new("src/lib.rs#L1-L10")?;
+		assert_eq!(pattern.path, "src/lib.rs");
+		assert_eq!(pattern.line_range, Some(LineRange::try_new(1, 10)?));
+		assert_eq!(pattern.glob, None);
+
+		// Test glob pattern
+		let pattern = PathPattern::try_new("src/**/*.rs")?;
+		assert_eq!(pattern.path, "src/**/*.rs");
+		assert_eq!(pattern.line_range, None);
+		assert_eq!(pattern.glob, Some("src/**/*.rs".to_string()));
+
+		// Test path with single line
+		let pattern = PathPattern::try_new("README.md#L5")?;
+		assert_eq!(pattern.path, "README.md");
+		assert_eq!(pattern.line_range, Some(LineRange::try_new(5, 5)?));
+		assert_eq!(pattern.glob, None);
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_path_pattern_matching() -> Result<(), anyhow::Error> {
+		let pattern = PathPattern::try_new("src/lib.rs")?;
+
+		// Test exact path matching
+		assert!(pattern.matches(Path::new("src/lib.rs")));
+		assert!(!pattern.matches(Path::new("src/main.rs")));
+
+		// Test glob pattern matching (simplified)
+		let glob_pattern = PathPattern::try_new("src/**/*.rs")?;
+		assert!(glob_pattern.matches(Path::new("src/lib.rs")));
+		assert!(glob_pattern.matches(Path::new("src/main.rs")));
+		assert!(!glob_pattern.matches(Path::new("src/lib.txt")));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_line_range_matching() -> Result<(), anyhow::Error> {
+		let pattern = PathPattern::try_new("src/lib.rs#L5-L10")?;
+
+		// Test line range matching
+		assert!(pattern.line_in_range(5));
+		assert!(pattern.line_in_range(7));
+		assert!(pattern.line_in_range(10));
+		assert!(!pattern.line_in_range(4));
+		assert!(!pattern.line_in_range(11));
+
+		// Test pattern without line range
+		let pattern = PathPattern::try_new("src/lib.rs")?;
+		assert!(pattern.line_in_range(1)); // Should always return true
+		assert!(pattern.line_in_range(100)); // Should always return true
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_creation() -> Result<(), anyhow::Error> {
+		let source = GitSource::try_new("74aa653664cd90adcc5f836f1777f265c109045b", "README.md")?;
+
+		assert_eq!(source.comparison_revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(source.path_pattern.path, "README.md");
+		assert!(format!("{:?}", source.id).contains("74aa653664cd90adcc5f836f1777f265c109045b"));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_content_conversion() -> Result<(), anyhow::Error> {
+		let source =
+			GitSource::try_new("74aa653664cd90adcc5f836f1777f265c109045b", "README.md#L1-L5")?;
+
+		let content: GitContent = source.into();
+		assert_eq!(content.revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(content.path_pattern.path, "README.md");
+		assert!(content.path_pattern.line_range.is_some());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_diff_creation() {
+		let diff =
+			GitDiff { diff: "--- a/README.md\n+++ b/README.md\n".to_string(), has_changes: true };
+
+		assert!(!diff.is_empty());
+		assert!(diff.has_changes);
+
+		let empty_diff = GitDiff { diff: String::new(), has_changes: false };
+
+		assert!(empty_diff.is_empty());
+		assert!(!empty_diff.has_changes);
+	}
+
+	#[test]
+	fn test_invalid_path_patterns() {
+		// Test invalid line ranges
+		assert!(PathPattern::try_new("file.rs#L0-L5").is_err()); // Start at 0
+		assert!(PathPattern::try_new("file.rs#L10-L5").is_err()); // End < start
+		assert!(PathPattern::try_new("file.rs#L5-L5").is_ok()); // Equal start/end is valid
+	}
+
+	#[test]
+	fn test_error_conversion() {
+		let git_error = GitSourceError::InvalidPathPattern("test".to_string());
+		let source_error: SourceError = git_error.into();
+
+		match source_error {
+			SourceError::Network(msg) => assert!(msg.contains("Invalid path pattern")),
+			_ => panic!("Expected Network error"),
+		}
 	}
 }
