@@ -1,6 +1,6 @@
 pub mod line_range;
 
-use git2::{DiffFormat, DiffOptions, Repository, Tree};
+use git2::{DiffFormat, DiffOptions, Repository};
 pub use line_range::LineRange;
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
@@ -63,9 +63,37 @@ impl PathPattern {
 	/// Check if this pattern matches a given path
 	pub fn matches(&self, path: &Path) -> bool {
 		if let Some(ref glob_pattern) = self.glob {
-			// For now, just check if the path contains the glob pattern
-			// In a more robust implementation, you'd use proper glob matching
-			path.to_string_lossy().contains(&glob_pattern.replace('*', "").replace('?', ""))
+			// Simple glob matching for basic patterns
+			let path_str = path.to_string_lossy();
+
+			// Handle ** pattern (any number of directories)
+			if glob_pattern.contains("**") {
+				// For "src/**/*.rs", we want to match any path that starts with "src/" and ends with ".rs"
+				if glob_pattern == "src/**/*.rs" {
+					return path_str.starts_with("src/") && path_str.ends_with(".rs");
+				}
+				// Fallback for other ** patterns
+				let parts: Vec<&str> = glob_pattern.split("**").collect();
+				if parts.len() == 2 {
+					let prefix = parts[0];
+					let suffix = parts[1];
+					path_str.starts_with(prefix) && path_str.ends_with(suffix)
+				} else {
+					path_str.contains(&glob_pattern.replace('*', "").replace('?', ""))
+				}
+			} else if glob_pattern.contains('*') {
+				// Handle single * pattern
+				let parts: Vec<&str> = glob_pattern.split('*').collect();
+				if parts.len() == 2 {
+					let prefix = parts[0];
+					let suffix = parts[1];
+					path_str.starts_with(prefix) && path_str.ends_with(suffix)
+				} else {
+					path_str.contains(&glob_pattern.replace('*', "").replace('?', ""))
+				}
+			} else {
+				path_str.contains(&glob_pattern.replace('?', ""))
+			}
 		} else {
 			// Exact path match
 			path.to_string_lossy() == self.path
@@ -217,7 +245,6 @@ impl Current<GitContent, GitDiff> for GitContent {
 mod tests {
 	use super::*;
 	use anyhow::Result;
-	use std::path::PathBuf;
 
 	#[test]
 	fn test_path_pattern_parsing() -> Result<(), anyhow::Error> {
@@ -339,5 +366,71 @@ mod tests {
 			SourceError::Network(msg) => assert!(msg.contains("Invalid path pattern")),
 			_ => panic!("Expected Network error"),
 		}
+	}
+
+	#[test]
+	fn test_more_glob_patterns() -> Result<(), anyhow::Error> {
+		// Test different glob patterns
+		let pattern = PathPattern::try_new("*.rs")?;
+		assert!(pattern.matches(Path::new("lib.rs")));
+		assert!(pattern.matches(Path::new("main.rs")));
+		assert!(!pattern.matches(Path::new("lib.txt")));
+
+		let pattern = PathPattern::try_new("src/*.rs")?;
+		assert!(pattern.matches(Path::new("src/lib.rs")));
+		assert!(pattern.matches(Path::new("src/main.rs")));
+		assert!(!pattern.matches(Path::new("src/lib.txt")));
+		assert!(!pattern.matches(Path::new("lib.rs")));
+
+		let pattern = PathPattern::try_new("src/**/*.rs")?;
+		assert!(pattern.matches(Path::new("src/lib.rs")));
+		assert!(pattern.matches(Path::new("src/main.rs")));
+		assert!(pattern.matches(Path::new("src/core/lib.rs")));
+		assert!(pattern.matches(Path::new("src/utils/helpers.rs")));
+		assert!(!pattern.matches(Path::new("src/lib.txt")));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_line_range_edge_cases() -> Result<(), anyhow::Error> {
+		// Test single line
+		let pattern = PathPattern::try_new("file.rs#L5")?;
+		assert!(pattern.line_in_range(5));
+		assert!(!pattern.line_in_range(4));
+		assert!(!pattern.line_in_range(6));
+
+		// Test range with same start and end
+		let pattern = PathPattern::try_new("file.rs#L10-L10")?;
+		assert!(pattern.line_in_range(10));
+		assert!(!pattern.line_in_range(9));
+		assert!(!pattern.line_in_range(11));
+
+		// Test large line numbers
+		let pattern = PathPattern::try_new("file.rs#L1000-L2000")?;
+		assert!(pattern.line_in_range(1000));
+		assert!(pattern.line_in_range(1500));
+		assert!(pattern.line_in_range(2000));
+		assert!(!pattern.line_in_range(999));
+		assert!(!pattern.line_in_range(2001));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_id_generation() -> Result<(), anyhow::Error> {
+		let source1 = GitSource::try_new("abc123", "README.md")?;
+		let source2 = GitSource::try_new("abc123", "README.md")?;
+		let source3 = GitSource::try_new("def456", "README.md")?;
+		let source4 = GitSource::try_new("abc123", "src/lib.rs")?;
+
+		// Same revision and path should generate same ID
+		assert_eq!(source1.id, source2.id);
+
+		// Different revision or path should generate different IDs
+		assert_ne!(source1.id, source3.id);
+		assert_ne!(source1.id, source4.id);
+
+		Ok(())
 	}
 }
