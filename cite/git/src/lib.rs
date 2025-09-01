@@ -3,7 +3,7 @@ pub mod line_range;
 use git2::{DiffFormat, DiffOptions, Repository};
 pub use line_range::LineRange;
 
-use cite_core::{Comparison, Content, Current, Diff, Id, Referenced, Source, SourceError};
+use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -73,14 +73,39 @@ impl PathPattern {
 /// Git source configuration
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitSource {
+	pub id: Id,
+	pub remote: String,
 	pub comparison_revision: String,
 	pub paths: PathPattern,
 }
 
 impl GitSource {
-	pub fn try_new(comparison_revision: &str, pattern: &str) -> Result<Self, GitSourceError> {
+	pub fn try_new(
+		remote: &str,
+		comparison_revision: &str,
+		pattern: &str,
+	) -> Result<Self, GitSourceError> {
 		let path_pattern = PathPattern::try_new(pattern)?;
-		Ok(Self { comparison_revision: comparison_revision.to_string(), paths: path_pattern })
+		Ok(Self {
+			id: Id::new(format!("{}/{}", remote, comparison_revision)),
+			remote: remote.to_string(),
+			comparison_revision: comparison_revision.to_string(),
+			paths: path_pattern,
+		})
+	}
+}
+
+impl Source<GitContent, GitContent, GitDiff> for GitSource {
+	fn id(&self) -> &Id {
+		&self.id
+	}
+
+	fn get_referenced(&self) -> Result<GitContent, SourceError> {
+		Ok(self.clone().into())
+	}
+
+	fn get_current(&self) -> Result<GitContent, SourceError> {
+		Ok(self.clone().into())
 	}
 }
 
@@ -88,6 +113,12 @@ impl GitSource {
 pub struct GitContent {
 	revision: String,
 	path: PathPattern,
+}
+
+impl From<GitSource> for GitContent {
+	fn from(source: GitSource) -> Self {
+		GitContent { revision: source.comparison_revision, path: source.paths }
+	}
 }
 
 impl Content for GitContent {}

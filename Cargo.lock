@@ -231,6 +231,7 @@ name = "cite-core"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "serde",
  "tempfile",
  "thiserror 1.0.69",
 ]
