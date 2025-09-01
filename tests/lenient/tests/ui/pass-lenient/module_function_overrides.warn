@@ -1,4 +1,4 @@
-warning: use of deprecated function `_CITE_VALIDATION_MOD_test_module::_citation_warning`: Citation content has changed!
+warning: use of deprecated function `_CITE_VALIDATION_0::_citation_warning`: Citation content has changed!
                   Referenced: old content
                   Current: new content
          Citation requires documentation but no annotation provided. Add a 'reason = "..."' attribute or enable the annotationless feature

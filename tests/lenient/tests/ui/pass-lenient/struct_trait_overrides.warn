@@ -1,4 +1,4 @@
-warning: use of deprecated function `_CITE_VALIDATION_TestStruct::_citation_warning`: Citation requires documentation but no annotation provided. Add a 'reason = "..."' attribute or enable the annotationless feature
+warning: use of deprecated function `_CITE_VALIDATION_0::_citation_warning`: Citation requires documentation but no annotation provided. Add a 'reason = "..."' attribute or enable the annotationless feature
  --> tests/ui/pass-lenient/struct_trait_overrides.rs:6:1
   |
 6 | #[cite(mock, same = "content", level = "WARN")]
@@ -7,7 +7,7 @@ warning: use of deprecated function `_CITE_VALIDATION_TestStruct::_citation_warn
   = note: `#[warn(deprecated)]` on by default
   = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-warning: use of deprecated function `_CITE_VALIDATION_IMPL_6098541344::_citation_warning`: Citation content has changed!
+warning: use of deprecated function `_CITE_VALIDATION_3::_citation_warning`: Citation content has changed!
                   Referenced: old content
                   Current: new content
   --> tests/ui/pass-lenient/struct_trait_overrides.rs:24:1

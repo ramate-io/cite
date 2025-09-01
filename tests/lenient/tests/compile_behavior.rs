@@ -28,12 +28,19 @@ fn test_compile_pass_lenient() {
 fn test_compile_fail() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/fail-syntax/*.rs");
+	t.compile_fail("tests/ui/fail-lenient/*.rs");
 }
 
 #[test]
 fn test_compile_fail_syntax() {
 	let t = trybuild::TestCases::new();
 	t.compile_fail("tests/ui/fail-syntax/*.rs");
+}
+
+#[test]
+fn test_compile_fail_lenient() {
+	let t = trybuild::TestCases::new();
+	t.compile_fail("tests/ui/fail-lenient/*.rs");
 }
 
 // Individual test cases for more granular control
