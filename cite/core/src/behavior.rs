@@ -31,26 +31,30 @@ impl CitationBehavior {
 	pub fn from_features() -> Self {
 		// Check feature flags for citation level
 		// Default is Error (no feature flag needed)
-		#[cfg(feature = "warn")]
-		let level = CitationLevel::Warn;
-		#[cfg(feature = "silent")]
-		let level = CitationLevel::Silent;
-		#[cfg(not(any(feature = "warn", feature = "silent")))]
-		let level = CitationLevel::Error; // Default to error
+		// Silent takes precedence over warn
+		let level = if cfg!(feature = "silent") {
+			CitationLevel::Silent
+		} else if cfg!(feature = "warn") {
+			CitationLevel::Warn
+		} else {
+			CitationLevel::Error // Default to error
+		};
 
 		// Check feature flags for annotation requirement
 		// Default is Footnote (no feature flag needed)
-		#[cfg(feature = "annotationless")]
-		let annotation = CitationAnnotation::Any;
-		#[cfg(not(feature = "annotationless"))]
-		let annotation = CitationAnnotation::Footnote; // Default to footnote
+		let annotation = if cfg!(feature = "annotationless") {
+			CitationAnnotation::Any
+		} else {
+			CitationAnnotation::Footnote // Default to footnote
+		};
 
 		// Check feature flags for global behavior
 		// Default is Strict (no feature flag needed)
-		#[cfg(feature = "lenient")]
-		let global = CitationGlobal::Lenient;
-		#[cfg(not(feature = "lenient"))]
-		let global = CitationGlobal::Strict; // Default to strict
+		let global = if cfg!(feature = "lenient") {
+			CitationGlobal::Lenient
+		} else {
+			CitationGlobal::Strict // Default to strict
+		};
 
 		Self { level, annotation, global }
 	}
