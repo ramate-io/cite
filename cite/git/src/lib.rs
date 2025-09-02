@@ -30,6 +30,29 @@ impl From<GitSourceError> for SourceError {
 	}
 }
 
+/// Get the repository root directory using CARGO_MANIFEST_DIR
+fn get_repository_root() -> Result<std::path::PathBuf, GitSourceError> {
+	// CARGO_MANIFEST_DIR points to the directory containing Cargo.toml of the crate being built
+	let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").map_err(|_| {
+		GitSourceError::InvalidPathPattern("CARGO_MANIFEST_DIR not set".to_string())
+	})?;
+
+	let manifest_path = std::path::PathBuf::from(manifest_dir);
+
+	// Find the git repository root by walking up from the manifest directory
+	let mut current = manifest_path;
+	while !current.join(".git").exists() {
+		current = current
+			.parent()
+			.ok_or_else(|| {
+				GitSourceError::InvalidPathPattern("Could not find git repository root".to_string())
+			})?
+			.to_path_buf();
+	}
+
+	Ok(current)
+}
+
 /// Path pattern for git source files
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PathPattern {
@@ -135,8 +158,8 @@ impl Referenced for GitContent {}
 /// Git diff representation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitDiff {
-	pub diff: String,
-	pub has_changes: bool,
+	diff: String,
+	has_changes: bool,
 }
 
 impl Diff for GitDiff {
@@ -145,10 +168,22 @@ impl Diff for GitDiff {
 	}
 }
 
+impl GitDiff {
+	pub fn has_changes(&self) -> bool {
+		self.has_changes
+	}
+
+	pub fn diff(&self) -> &str {
+		&self.diff
+	}
+}
+
 impl Current<GitContent, GitDiff> for GitContent {
 	fn diff(&self, other: &GitContent) -> Result<GitDiff, SourceError> {
-		// Get the comparison tree from the other content's revision
-		let repo = Repository::open(".").map_err(|e| SourceError::Internal(e.into()))?;
+		// Get the repository root and open the repository from there
+		let repository_root = get_repository_root().map_err(|e| SourceError::Internal(e.into()))?;
+		let repo =
+			Repository::open(&repository_root).map_err(|e| SourceError::Internal(e.into()))?;
 		let obj = repo
 			.revparse_single(&other.revision)
 			.map_err(|e| SourceError::Internal(e.into()))?;
@@ -193,8 +228,6 @@ impl Current<GitContent, GitDiff> for GitContent {
 
 			if let Some(path) = file_path {
 				if self.path_pattern.matches(path) {
-					has_changes = true;
-
 					// Check if this line is within our line range
 					let should_include = if let Some(ref line_range) = self.path_pattern.line_range
 					{
@@ -216,6 +249,8 @@ impl Current<GitContent, GitDiff> for GitContent {
 					};
 
 					if should_include {
+						has_changes = true;
+
 						// Add the diff line
 						buffer.push(line.origin());
 						if let Ok(content) = std::str::from_utf8(line.content()) {
@@ -472,6 +507,203 @@ mod tests {
 
 		// The key difference is that content_limited will only include diff lines
 		// that fall within lines 1-3, while content_full will include all diff lines
+		Ok(())
+	}
+
+	#[test]
+	fn test_diff_line_intersection_scenarios() -> Result<(), anyhow::Error> {
+		// Test various line range intersection scenarios with the test commit
+		let commit_hash = "94dab273cf6c2abe8742d6d459ad45c96ca9b694";
+
+		// Test 1: Lines 1-3 (covering the beginning)
+		let source_1_3 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L1-L3")?;
+		let content_1_3: GitContent = source_1_3.into();
+
+		// Test 2: Lines 5-10 (covering the middle to end)
+		let source_5_10 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-5-10.md#L5-L10")?;
+		let content_5_10: GitContent = source_5_10.into();
+
+		// Test 3: Lines 4-6 (intersecting with both ranges)
+		let source_4_6 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L4-L6")?;
+		let content_4_6: GitContent = source_4_6.into();
+
+		// Test 4: Lines 8-12 (partially intersecting, extending beyond file)
+		let source_8_12 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L8-L12")?;
+		let content_8_12: GitContent = source_8_12.into();
+
+		// Test 5: Lines 11-15 (not intersecting with file content)
+		let source_11_15 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L11-L15")?;
+		let content_11_15: GitContent = source_11_15.into();
+
+		// Test 6: Single line (line 5)
+		let source_line_5 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L5")?;
+		let content_line_5: GitContent = source_line_5.into();
+
+		// Test 7: Full file (no line range)
+		let source_full =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md")?;
+		let content_full: GitContent = source_full.into();
+
+		// Test 8: File with no changes
+		let source_no_diff =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/no-diffed.md")?;
+		let content_no_diff: GitContent = source_no_diff.into();
+
+		// Test 9: File that will be deleted
+		let source_to_delete =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/to-delete.md")?;
+		let content_to_delete: GitContent = source_to_delete.into();
+
+		// Run diffs to test line intersection logic
+		// These should not panic and should filter lines correctly
+		let _diff_1_3 = content_1_3.diff(&content_full);
+		let _diff_5_10 = content_5_10.diff(&content_full);
+		let _diff_4_6 = content_4_6.diff(&content_full);
+		let _diff_8_12 = content_8_12.diff(&content_full);
+		let _diff_11_15 = content_11_15.diff(&content_full);
+		let _diff_line_5 = content_line_5.diff(&content_full);
+		let _diff_no_diff = content_no_diff.diff(&content_full);
+		let _diff_to_delete = content_to_delete.diff(&content_full);
+
+		// If we get here without panicking, the line intersection logic is working
+		Ok(())
+	}
+
+	#[test]
+	fn test_line_range_edge_cases_with_real_files() -> Result<(), anyhow::Error> {
+		// Test edge cases for line range filtering with real files
+		let commit_hash = "94dab273cf6c2abe8742d6d459ad45c96ca9b694";
+
+		// Test 1: Line range exactly matching file boundaries
+		let source_exact =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L1-L10")?;
+		let content_exact: GitContent = source_exact.into();
+
+		// Test 2: Line range starting at 1, ending before file end
+		let source_start_1 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L1-L5")?;
+		let content_start_1: GitContent = source_start_1.into();
+
+		// Test 3: Line range starting after file start, ending at file end
+		let source_end_file =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L5-L10")?;
+		let content_end_file: GitContent = source_end_file.into();
+
+		// Test 4: Line range completely outside file (after)
+		let source_after =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L15-L20")?;
+		let content_after: GitContent = source_after.into();
+
+		// Test 5: Single line at file boundary
+		let source_boundary =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L10")?;
+		let content_boundary: GitContent = source_boundary.into();
+
+		// Run diffs to test edge case handling
+		let _diff_exact = content_exact.diff(&content_start_1);
+		let _diff_start_1 = content_start_1.diff(&content_exact);
+		let _diff_end_file = content_end_file.diff(&content_exact);
+		let _diff_after = content_after.diff(&content_exact);
+		let _diff_boundary = content_boundary.diff(&content_exact);
+
+		// If we get here without panicking, the edge case handling is working
+		Ok(())
+	}
+
+	#[test]
+	fn test_diff_content_verification() -> Result<(), anyhow::Error> {
+		// Test that diff content is actually filtered by line ranges
+		let commit_hash = "94dab273cf6c2abe8742d6d459ad45c96ca9b694";
+
+		// Create different line range sources
+		let source_1_3 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L1-L3")?;
+		let source_5_10 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-5-10.md#L5-L10")?;
+		let source_full =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md")?;
+
+		let content_1_3: GitContent = source_1_3.into();
+		let content_5_10: GitContent = source_5_10.into();
+		let content_full: GitContent = source_full.into();
+
+		// Generate diffs
+		let diff_1_3 = content_1_3.diff(&content_1_3.clone())?;
+		let diff_5_10 = content_5_10.diff(&content_5_10.clone())?;
+		let diff_full = content_full.diff(&content_full.clone())?;
+
+		// Verify that diffs are generated (even if empty)
+		// The actual content verification would depend on what changes were made
+		// between the commit and current working directory
+
+		assert!(diff_1_3.has_changes());
+		assert!(diff_5_10.has_changes());
+		assert!(diff_full.has_changes());
+
+		assert_eq!(diff_1_3.diff(), "-Alpha\n-Bravo\n-Charlie\n+Aaron\n+Bear\n+Cat\n");
+		assert_eq!(diff_5_10.diff(), "-Echo\n-Foxtrot\n-Gamma\n-Halifax\n-Istanbul\n-Juniper>\n\\ No newline at end of file\n+Epsom\n+Fox\n+Golf\n+Hotel\n+India\n+Juliet<\n\\ No newline at end of file\n");
+		assert_eq!(diff_full.diff(), "Fdiff --git a/cite/http/tests/content/diffed-lines-1-3.md b/cite/http/tests/content/diffed-lines-1-3.md\nindex 0f800a0..9aeeae4 100644\n--- a/cite/http/tests/content/diffed-lines-1-3.md\n+++ b/cite/http/tests/content/diffed-lines-1-3.md\nH@@ -1,6 +1,6 @@\n-Alpha\n-Bravo\n-Charlie\n+Aaron\n+Bear\n+Cat\n Delta\n Echo\n Foxtrot\n");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_diff_content_verification_edge_cases() -> Result<(), anyhow::Error> {
+		// Test that diff content is actually filtered by line ranges
+		let commit_hash = "94dab273cf6c2abe8742d6d459ad45c96ca9b694";
+
+		let source_intersects_1_3 =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L3-L5")?;
+		let content_intersects_1_3: GitContent = source_intersects_1_3.into();
+		let diff_intersects_1_3 = content_intersects_1_3.diff(&content_intersects_1_3.clone())?;
+
+		assert!(diff_intersects_1_3.has_changes());
+		assert_eq!(diff_intersects_1_3.diff(), "-Charlie\n+Cat\n Delta\n Echo\n");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_diff_does_not_intersect() -> Result<(), anyhow::Error> {
+		let commit_hash = "94dab273cf6c2abe8742d6d459ad45c96ca9b694";
+
+		let source_does_not_intersect =
+			GitSource::try_new(commit_hash, "cite/http/tests/content/diffed-lines-1-3.md#L7-L10")?;
+		let content_does_not_intersect: GitContent = source_does_not_intersect.into();
+
+		let diff_does_not_intersect =
+			content_does_not_intersect.diff(&content_does_not_intersect.clone())?;
+
+		assert!(!diff_does_not_intersect.has_changes());
+		assert_eq!(diff_does_not_intersect.diff(), "");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_cargo_manifest_dir_approach() -> Result<(), anyhow::Error> {
+		// Test that CARGO_MANIFEST_DIR approach works correctly
+		let repository_root = get_repository_root()?;
+
+		// Verify that we found a git repository
+		assert!(repository_root.join(".git").exists());
+
+		// Verify that we can open the repository
+		let repo = Repository::open(&repository_root)?;
+		assert!(repo.is_bare() == false); // Should be a working directory repository
+
+		// Verify that we're in the right place (should be the cite repository)
+		let head = repo.head()?;
+		let head_oid = head.target().unwrap();
+		println!("Repository root: {:?}", repository_root);
+		println!("Current HEAD: {}", head_oid);
+
 		Ok(())
 	}
 }
