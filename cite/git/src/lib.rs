@@ -1,7 +1,9 @@
 pub mod line_range;
+pub mod repository_manager;
 
 use git2::{DiffFormat, DiffOptions, Repository};
 pub use line_range::LineRange;
+use repository_manager::{RepositoryBuilder, RepositoryManager, fetch_repository, revision_exists, get_repository};
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
@@ -124,6 +126,9 @@ pub struct GitSource {
 	pub path_pattern: PathPattern,
 	/// The revision to compare against (commit hash, branch, tag)
 	pub comparison_revision: String,
+	/// Repository builder for handling remote repository operations
+	#[serde(skip)]
+	repository_builder: RepositoryBuilder,
 }
 
 impl GitSource {
@@ -145,6 +150,7 @@ impl GitSource {
 			remote: remote.to_string(),
 			path_pattern,
 			comparison_revision: revision.to_string(),
+			repository_builder: RepositoryBuilder::new(remote.to_string()),
 		})
 	}
 }
@@ -169,14 +175,20 @@ pub struct GitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
+	#[serde(skip)]
+	pub repository_manager: Option<RepositoryManager>,
 }
 
 impl From<GitSource> for GitContent {
 	fn from(source: GitSource) -> Self {
+		// Use the embedded repository builder to fetch the repository
+		let repository_manager = source.repository_builder.fetch().ok();
+		
 		GitContent { 
 			remote: source.remote, 
 			path_pattern: source.path_pattern, 
-			revision: source.comparison_revision 
+			revision: source.comparison_revision,
+			repository_manager,
 		}
 	}
 }
@@ -219,11 +231,43 @@ impl GitDiff {
 
 impl Current<GitContent, GitDiff> for GitContent {
 	fn diff(&self, other: &GitContent) -> Result<GitDiff, SourceError> {
-		// For now, we'll use the local repository approach
-		// TODO: Implement remote repository fetching
-		let repository_root = get_repository_root().map_err(|e| SourceError::Internal(e.into()))?;
-		let repo =
-			Repository::open(&repository_root).map_err(|e| SourceError::Internal(e.into()))?;
+		// Try to use remote repository first, fall back to local if that fails
+		let (repo, repo_path) = if let Some(ref repo_manager) = self.repository_manager {
+			let repo = repo_manager.get_repository()
+				.map_err(|e| SourceError::Internal(e.into()))?;
+			(repo, repo_manager.path().clone())
+		} else {
+			// Try to fetch remote repository
+			match fetch_repository(&self.remote) {
+				Ok(path) => {
+					let repo = get_repository(&path)
+						.map_err(|e| SourceError::Internal(e.into()))?;
+					(repo, path)
+				}
+				Err(_) => {
+					// Fall back to local repository
+					let repository_root = get_repository_root().map_err(|e| SourceError::Internal(e.into()))?;
+					let repo = Repository::open(&repository_root).map_err(|e| SourceError::Internal(e.into()))?;
+					(repo, repository_root)
+				}
+			}
+		};
+		
+		// Check if the revision exists in the repository
+		if let Some(ref repo_manager) = self.repository_manager {
+			if !repo_manager.revision_exists(&other.revision) {
+				return Err(SourceError::Internal(
+					format!("Revision {} not found in repository {}", other.revision, self.remote).into(),
+				));
+			}
+		} else {
+			// Fallback check for local repository
+			if !revision_exists(&repo_path, &other.revision) {
+				return Err(SourceError::Internal(
+					format!("Revision {} not found in repository {}", other.revision, self.remote).into(),
+				));
+			}
+		}
 		
 		let obj = repo
 			.revparse_single(&other.revision)
@@ -251,13 +295,20 @@ impl Current<GitContent, GitDiff> for GitContent {
 			}
 		};
 
-		// Generate diff between comparison tree and working directory
+		// For remote repositories, we compare the tree to itself (no working directory)
+		// For local repositories, we compare to working directory
 		let mut opts = DiffOptions::new();
 		opts.pathspec(&self.path_pattern.path);
 
-		let diff = repo
-			.diff_tree_to_workdir_with_index(Some(&comparison_tree), Some(&mut opts))
-			.map_err(|e| SourceError::Internal(e.into()))?;
+		let diff = if repo_path == get_repository_root().unwrap_or_default() {
+			// Local repository - compare to working directory
+			repo.diff_tree_to_workdir_with_index(Some(&comparison_tree), Some(&mut opts))
+				.map_err(|e| SourceError::Internal(e.into()))?
+		} else {
+			// Remote repository - compare to empty tree
+			repo.diff_tree_to_tree(Some(&comparison_tree), None, Some(&mut opts))
+				.map_err(|e| SourceError::Internal(e.into()))?
+		};
 
 		// Capture the diff output and check for intersections
 		let mut buffer = String::new();
