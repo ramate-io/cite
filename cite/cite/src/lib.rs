@@ -770,8 +770,7 @@ fn try_execute_source_expression(
 				}
 
 				// Try Git sources
-				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args)
-				{
+				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
 					return execute_git_source_validation(git_source, behavior, level_override);
 				}
 			}
@@ -868,7 +867,7 @@ fn execute_git_source_validation(
 	behavior: &cite_core::CitationBehavior,
 	level_override: Option<cite_core::CitationLevel>,
 ) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::{Source, Diff};
+	use cite_core::{Diff, Source};
 
 	// Git sources handle git operations internally
 	match git_source.get() {
@@ -878,16 +877,18 @@ fn execute_git_source_validation(
 			if !result.is_valid() {
 				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
 					format!(
-						"Git citation content has changed!\n         Revision: {}\n         Path: {}\n{}",
-						comparison.current().revision,
+						"Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}\n{}",
+						comparison.current().remote,
 						comparison.current().path_pattern.path,
+						comparison.current().revision,
 						unified_diff
 					)
 				} else {
 					format!(
-                        "Git citation content has changed!\n         Revision: {}\n         Path: {}",
-                        comparison.current().revision,
-                        comparison.current().path_pattern.path
+                        "Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}",
+                        comparison.current().remote,
+                        comparison.current().path_pattern.path,
+                        comparison.current().revision
                     )
 				};
 
