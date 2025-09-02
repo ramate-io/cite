@@ -8,22 +8,24 @@
 //! The parser looks for the following patterns in citation arguments:
 //!
 //! ```text
-//! [git, revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "README.md", ...other_args]
-//! [git, revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "src/lib.rs#L1-L10", ...other_args]
-//! [git, revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "src/**/*.rs", ...other_args]
+//! [git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "README.md"]
+//! [git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "src/lib.rs#L1-L10"]
+//! [git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "src/**/*.rs"]
 //! ```
 //!
 //! The parsing algorithm:
 //! 1. Verify first argument is the identifier `git`
 //! 2. Scan remaining arguments for assignment expressions
-//! 3. Extract required `revision` and `path` parameters
+//! 3. Extract required `remote`, `referenced_revision`, `current_revision`, and `path` parameters
 //! 4. Match additional parameters to known Git options
 //! 5. Construct GitSource using cite-git
 //!
 //! # Supported Parameters
 //!
 //! **Required:**
-//! - `revision = "74aa653664cd90adcc5f836f1777f265c109045b"` - Git commit hash or reference
+//! - `remote = "https://github.com/ramate-io/cite"` - Remote repository URL
+//! - `referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"` - Git commit hash or reference for the cited content
+//! - `current_revision = "main"` - Git commit hash or reference for the current content to compare against
 //! - `path = "README.md"` - File path relative to repository root
 //!
 //! **Path Options:**
@@ -31,42 +33,40 @@
 //! - `path = "src/**/*.rs"` - Glob pattern for multiple files
 //! - `path = "README.md#L5"` - Single line specification
 //!
-//! **Future Extensions:**
-//! - `branch = "main"` - Branch name instead of commit hash
-//! - `tag = "v1.0.0"` - Tag name instead of commit hash
-//! - `remote = "origin"` - Remote name for cross-repository references
-//! - `submodule = "path/to/submodule"` - Submodule path
-//!
 //! # Error Handling
 //!
 //! The parser is designed to fail gracefully:
 //! - Returns `None` if the syntax doesn't match Git source patterns
 //! - Allows the main citation parser to try other source types
-//! - Validates revision format and path syntax at parse time
+//! - Validation happens in the GitSource constructor, not in the macro
 //! - Provides helpful error messages for malformed syntax
 //!
 //! # Examples
 //!
 //! ```rust,ignore
 //! // Basic file validation
-//! #[cite(git, revision = "74aa653664cd90adcc5f836f1777f265c109045b",
+//! #[cite(git, remote = "https://github.com/ramate-io/cite",
+//!        referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+//!        current_revision = "main",
 //!        path = "README.md")]
 //!
 //! // Line range validation
-//! #[cite(git, revision = "74aa653664cd90adcc5f836f1777f265c109045b",
+//! #[cite(git, remote = "https://github.com/ramate-io/cite",
+//!        referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+//!        current_revision = "main",
 //!        path = "src/lib.rs#L1-L10")]
 //!
 //! // Glob pattern validation
-//! #[cite(git, revision = "74aa653664cd90adcc5f836f1777f265c109045b",
+//! #[cite(git, remote = "https://github.com/ramate-io/cite",
+//!        referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+//!        current_revision = "main",
 //!        path = "src/**/*.rs")]
 //!
 //! // Single line validation
-//! #[cite(git, revision = "74aa653664cd90adcc5f836f1777f265c109045b",
+//! #[cite(git, remote = "https://github.com/ramate-io/cite",
+//!        referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+//!        current_revision = "main",
 //!        path = "README.md#L5")]
-//!
-//! // Cross-repository validation (future)
-//! #[cite(git, revision = "74aa653664cd90adcc5f836f1777f265c109045b",
-//!        path = "README.md", remote = "origin")]
 //! ```
 
 use cite_git::GitSource;
@@ -75,11 +75,11 @@ use syn::{Expr, Lit};
 /// Parse the keyword argument syntax for Git sources
 ///
 /// Supports syntax like:
-/// - `git, remote = "https://github.com/ramate-io/cite", revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "README.md"`
-/// - `git, remote = "https://github.com/ramate-io/cite", revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "src/lib.rs#L1-L10"`
-/// - `git, remote = "https://github.com/ramate-io/cite", revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "src/**/*.rs"`
+/// - `git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "README.md"`
+/// - `git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "src/lib.rs#L1-L10"`
+/// - `git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "src/**/*.rs"`
 pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
-	// Look for pattern: git, remote = "...", revision = "...", path = "..."
+	// Look for pattern: git, remote = "...", referenced_revision = "...", current_revision = "...", path = "..."
 	if args.is_empty() {
 		return None;
 	}
@@ -89,7 +89,8 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 		if path_expr.path.segments.len() == 1 && path_expr.path.segments[0].ident == "git" {
 			// Look through remaining arguments for assignments
 			let mut remote = None;
-			let mut revision = None;
+			let mut referenced_revision = None;
+			let mut current_revision = None;
 			let mut path = None;
 
 			for arg in &args[1..] {
@@ -106,11 +107,18 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 										remote = Some(remote_str);
 									}
 								}
-								"revision" => {
+								"referenced_revision" => {
 									if let Some(revision_str) =
 										extract_string_literal(&assign_expr.right)
 									{
-										revision = Some(revision_str);
+										referenced_revision = Some(revision_str);
+									}
+								}
+								"current_revision" => {
+									if let Some(revision_str) =
+										extract_string_literal(&assign_expr.right)
+									{
+										current_revision = Some(revision_str);
 									}
 								}
 								"path" => {
@@ -128,10 +136,21 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 			}
 
 			// Construct GitSource if we have required parameters
-			if let (Some(remote_str), Some(revision_str), Some(path_str)) = (remote, revision, path)
+			if let (
+				Some(remote_str),
+				Some(referenced_revision_str),
+				Some(current_revision_str),
+				Some(path_str),
+			) = (remote, referenced_revision, current_revision, path)
 			{
 				// Use the constructor for macro usage - let it handle validation
-				return GitSource::try_new(&remote_str, &path_str, &revision_str).ok();
+				return GitSource::try_new(
+					&remote_str,
+					&path_str,
+					&referenced_revision_str,
+					&current_revision_str,
+				)
+				.ok();
 			}
 
 			// If we got this far but don't have required params, return None
@@ -163,7 +182,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = "README.md"),
 		];
 
@@ -173,7 +193,8 @@ mod tests {
 		let git_source = result.unwrap();
 		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
 		assert_eq!(git_source.path_pattern.path, "README.md");
-		assert_eq!(git_source.comparison_revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
 	}
 
 	#[test]
@@ -181,7 +202,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = "src/lib.rs#L1-L10"),
 		];
 
@@ -191,7 +213,8 @@ mod tests {
 		let git_source = result.unwrap();
 		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
 		assert_eq!(git_source.path_pattern.path, "src/lib.rs");
-		assert_eq!(git_source.comparison_revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
 	}
 
 	#[test]
@@ -199,7 +222,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = "src/**/*.rs"),
 		];
 
@@ -209,14 +233,29 @@ mod tests {
 		let git_source = result.unwrap();
 		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
 		assert_eq!(git_source.path_pattern.path, "src/**/*.rs");
-		assert_eq!(git_source.comparison_revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
 	}
 
 	#[test]
-	fn test_parse_git_missing_revision() {
+	fn test_parse_git_missing_referenced_revision() {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
+			parse_quote!(current_revision = "main"),
+			parse_quote!(path = "README.md"),
+		];
+
+		let result = try_parse_from_citation_args(&args);
+		assert!(result.is_none());
+	}
+
+	#[test]
+	fn test_parse_git_missing_current_revision() {
+		let args: Vec<Expr> = vec![
+			parse_quote!(git),
+			parse_quote!(remote = "https://github.com/ramate-io/cite"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
 			parse_quote!(path = "README.md"),
 		];
 
@@ -229,7 +268,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 		];
 
 		let result = try_parse_from_citation_args(&args);
@@ -241,7 +281,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "invalid"),
+			parse_quote!(referenced_revision = "invalid"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = "README.md"),
 		];
 
@@ -255,7 +296,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = ""),
 		];
 
@@ -277,7 +319,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = "README.md#L5"),
 		];
 
@@ -287,7 +330,8 @@ mod tests {
 		let git_source = result.unwrap();
 		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
 		assert_eq!(git_source.path_pattern.path, "README.md");
-		assert_eq!(git_source.comparison_revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
 	}
 
 	#[test]
@@ -295,7 +339,8 @@ mod tests {
 		let args: Vec<Expr> = vec![
 			parse_quote!(git),
 			parse_quote!(remote = "https://github.com/ramate-io/cite"),
-			parse_quote!(revision = "74aa653664cd90adcc5f836f1777f265c109045b"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
 			parse_quote!(path = "src/core/behavior.rs#L42-L100"),
 		];
 
@@ -305,6 +350,7 @@ mod tests {
 		let git_source = result.unwrap();
 		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
 		assert_eq!(git_source.path_pattern.path, "src/core/behavior.rs");
-		assert_eq!(git_source.comparison_revision, "74aa653664cd90adcc5f836f1777f265c109045b");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
 	}
 }
