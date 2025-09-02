@@ -798,18 +798,8 @@ mod tests {
 	fn test_diff_does_not_intersect() -> Result<(), anyhow::Error> {
 		let source_does_not_intersect =
 			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L7-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
-		let content_does_not_intersect = source_does_not_intersect.get_referenced()?;
-
-		let current_content = source_does_not_intersect.get_current()?;
-		let diff_does_not_intersect = current_content.diff(&content_does_not_intersect)?;
-
-		// The test expects no changes, but there might be changes in the specified range
-		// Let's check what the actual diff output is
-		println!("Diff output: {:?}", diff_does_not_intersect.diff());
-		println!("Has changes: {}", diff_does_not_intersect.has_changes());
-		
-		// For now, let's just assert that the diff operation completed successfully
-		assert!(diff_does_not_intersect.diff().len() >= 0);
+		let comparison_does_not_intersect = source_does_not_intersect.get()?;
+		assert!(!comparison_does_not_intersect.diff().has_changes());
 
 		Ok(())
 	}
