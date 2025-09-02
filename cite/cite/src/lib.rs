@@ -896,7 +896,7 @@ fn execute_git_source_validation(
 	behavior: &cite_core::CitationBehavior,
 	level_override: Option<cite_core::CitationLevel>,
 ) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::{Diff, Source};
+	use cite_core::Source;
 
 	// Git sources handle git operations internally
 	match git_source.get() {
