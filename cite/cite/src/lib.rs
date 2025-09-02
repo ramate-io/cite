@@ -166,6 +166,8 @@ mod mock;
 /// Additional behavior parameters are handled by the main citation parser.
 mod http;
 
+mod git;
+
 /// The main `#[cite]` attribute macro
 ///
 /// Supports keyword argument syntax like:
@@ -247,7 +249,7 @@ fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<C
 			if path_expr.path.segments.len() == 1 {
 				let source_type = &path_expr.path.segments[0].ident.to_string();
 				match source_type.as_str() {
-					"mock" | "http" => {
+					"mock" | "http" | "git" => {
 						return parse_keyword_syntax(args_vec);
 					}
 					_ => {
@@ -766,6 +768,12 @@ fn try_execute_source_expression(
 				{
 					return execute_http_source_validation(http_source, behavior, level_override);
 				}
+
+				// Try Git sources
+				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args)
+				{
+					return execute_git_source_validation(git_source, behavior, level_override);
+				}
 			}
 		}
 	}
@@ -851,5 +859,47 @@ fn execute_http_source_validation(
 			Some(Ok(None))
 		}
 		Err(e) => Some(Err(format!("HTTP citation source error: {:?}", e))),
+	}
+}
+
+/// Execute Git source validation and return the result
+fn execute_git_source_validation(
+	git_source: cite_git::GitSource,
+	behavior: &cite_core::CitationBehavior,
+	level_override: Option<cite_core::CitationLevel>,
+) -> Option<std::result::Result<Option<String>, String>> {
+	use cite_core::{Source, Diff};
+
+	// Git sources handle git operations internally
+	match git_source.get() {
+		Ok(comparison) => {
+			let result = comparison.validate(behavior, level_override);
+
+			if !result.is_valid() {
+				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
+					format!(
+						"Git citation content has changed!\n         Revision: {}\n         Path: {}\n{}",
+						comparison.current().revision,
+						comparison.current().path_pattern.path,
+						unified_diff
+					)
+				} else {
+					format!(
+                        "Git citation content has changed!\n         Revision: {}\n         Path: {}",
+                        comparison.current().revision,
+                        comparison.current().path_pattern.path
+                    )
+				};
+
+				if result.should_fail_compilation() {
+					return Some(Err(diff_msg));
+				} else if result.should_report() {
+					return Some(Ok(Some(diff_msg)));
+				}
+			}
+
+			Some(Ok(None))
+		}
+		Err(e) => Some(Err(format!("Git citation source error: {:?}", e))),
 	}
 }

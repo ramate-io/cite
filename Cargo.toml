@@ -81,6 +81,7 @@ pathdiff = "0.2"
 cite-core = { path = "cite/core" }
 cite-cache = { path = "cite/cache" }
 cite-http = { path = "cite/http" }
+cite-git = { path = "cite/git" }
 cite-macro = { path = "cite/macro" }
 cite = { path = "cite/cite" }
 

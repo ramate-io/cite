@@ -176,6 +176,16 @@ impl GitDiff {
 	pub fn diff(&self) -> &str {
 		&self.diff
 	}
+
+	/// Get the unified diff output, similar to HTTP sources
+	/// Returns Some(diff_string) if there are changes, None if no changes
+	pub fn unified_diff(&self) -> Option<&str> {
+		if self.has_changes && !self.diff.is_empty() {
+			Some(&self.diff)
+		} else {
+			None
+		}
+	}
 }
 
 impl Current<GitContent, GitDiff> for GitContent {
@@ -374,6 +384,34 @@ mod tests {
 
 		assert!(empty_diff.is_empty());
 		assert!(!empty_diff.has_changes);
+	}
+
+	#[test]
+	fn test_git_diff_unified_diff() {
+		let diff_with_changes = GitDiff { 
+			diff: "--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,3 @@\n-old content\n+new content\n unchanged\n".to_string(), 
+			has_changes: true 
+		};
+
+		// Should return Some when there are changes
+		assert!(diff_with_changes.unified_diff().is_some());
+		assert_eq!(diff_with_changes.unified_diff().unwrap(), diff_with_changes.diff());
+
+		let diff_no_changes = GitDiff { 
+			diff: "".to_string(), 
+			has_changes: false 
+		};
+
+		// Should return None when there are no changes
+		assert!(diff_no_changes.unified_diff().is_none());
+
+		let diff_empty_string = GitDiff { 
+			diff: "".to_string(), 
+			has_changes: true 
+		};
+
+		// Should return None when diff string is empty even if has_changes is true
+		assert!(diff_empty_string.unified_diff().is_none());
 	}
 
 	#[test]

@@ -21,6 +21,7 @@ thiserror = { workspace = true }
 cite-core = { workspace = true }
 cite-cache = { workspace = true }
 cite-http = { workspace = true }
+cite-git = { workspace = true }
 
 # Heavy dependencies for macro expansion - build-time only
 regex = { workspace = true }

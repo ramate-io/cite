@@ -189,6 +189,7 @@ dependencies = [
  "chrono",
  "cite-cache",
  "cite-core",
+ "cite-git",
  "cite-http",
  "proc-macro2",
  "quote",
