@@ -763,14 +763,20 @@ mod tests {
 		// Create different line range sources
 		let source_1_3 =
 			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
-		let source_5_10 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-5-10.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
-		let source_full =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
-
-		
 		let comparison_1_3 = source_1_3.get()?;
-        println!("Comparison 1_3: {:?}", comparison_1_3.diff());
+        assert!(comparison_1_3.diff().has_changes());
+        assert_eq!(comparison_1_3.diff().diff(), "-Alpha\n-Bravo\n-Charlie\n+Aaron\n+Bear\n+Cat\n");
+
+        let source_5_10 =
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-5-10.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+        let comparison_5_10 = source_5_10.get()?;
+        assert!(comparison_5_10.diff().has_changes());
+        assert_eq!(comparison_5_10.diff().diff(), "-Echo\n-Foxtrot\n-Gamma\n-Halifax\n-Istanbul\n-Juniper>\n\\ No newline at end of file\n+Epsom\n+Fox\n+Golf\n+Hotel\n+India\n+Juliet<\n\\ No newline at end of file\n");
+
+		let source_full =
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/no-diffed.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+		let comparison_full = source_full.get()?;
+        assert!(!comparison_full.diff().has_changes());
 
 		Ok(())
 	}
@@ -781,13 +787,9 @@ mod tests {
 
 		let source_intersects_1_3 =
 			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L3-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
-		let content_intersects_1_3 = source_intersects_1_3.get_referenced()?;
-		let current_content = source_intersects_1_3.get_current()?;
-		let diff_intersects_1_3 = current_content.diff(&content_intersects_1_3)?;
-
-		assert!(diff_intersects_1_3.has_changes());
-		// The actual diff output shows the changes between the two commits
-		assert_eq!(diff_intersects_1_3.diff(), "-Charlie\n+Cat\n Delta\n Echo\n");
+		let comparison_intersects_1_3 = source_intersects_1_3.get()?;
+        assert!(comparison_intersects_1_3.diff().has_changes());
+		assert_eq!(comparison_intersects_1_3.diff().diff(), "-Charlie\n+Cat\n Delta\n Echo\n");
 
 		Ok(())
 	}
