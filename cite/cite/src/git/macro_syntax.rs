@@ -86,7 +86,8 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 
 	// First argument should be the identifier "git"
 	if let Expr::Path(path_expr) = &args[0] {
-		if path_expr.path.segments.len() == 1 && path_expr.path.segments[0].ident == "git" {
+		let segment = &path_expr.path.segments[0];
+		if path_expr.path.segments.len() == 1 && segment.ident == "git" {
 			// Look through remaining arguments for assignments
 			let mut remote = None;
 			let mut referenced_revision = None;
@@ -107,14 +108,14 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 										remote = Some(remote_str);
 									}
 								}
-								"referenced_revision" => {
+								"referenced_revision" | "ref_rev" => {
 									if let Some(revision_str) =
 										extract_string_literal(&assign_expr.right)
 									{
 										referenced_revision = Some(revision_str);
 									}
 								}
-								"current_revision" => {
+								"current_revision" | "cur_rev" => {
 									if let Some(revision_str) =
 										extract_string_literal(&assign_expr.right)
 									{
@@ -350,6 +351,26 @@ mod tests {
 		let git_source = result.unwrap();
 		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
 		assert_eq!(git_source.path_pattern.path, "src/core/behavior.rs");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
+	}
+
+	#[test]
+	fn test_parse_git_with_abbreviated_syntax() {
+		let args: Vec<Expr> = vec![
+			parse_quote!(git),
+			parse_quote!(remote = "https://github.com/ramate-io/cite"),
+			parse_quote!(ref_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(cur_rev = "main"),
+			parse_quote!(path = "README.md"),
+		];
+
+		let result = try_parse_from_citation_args(&args);
+		assert!(result.is_some());
+
+		let git_source = result.unwrap();
+		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(git_source.path_pattern.path, "README.md");
 		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
 		assert_eq!(git_source.current_revision, "main");
 	}

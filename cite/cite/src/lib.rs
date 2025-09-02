@@ -291,6 +291,15 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
 						"url" | "pattern" | "selector" | "match_type" | "fragment" | "cache" => {
 							source_args_found = true;
 						}
+						// Git source parameters
+						"remote"
+						| "referenced_revision"
+						| "ref_rev"
+						| "current_revision"
+						| "cur_rev"
+						| "path" => {
+							source_args_found = true;
+						}
 						"reason" => {
 							if let Expr::Lit(expr_lit) = &*assign_expr.right {
 								if let Lit::Str(lit_str) = &expr_lit.lit {
@@ -773,6 +782,26 @@ fn try_execute_source_expression(
 				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
 					return execute_git_source_validation(git_source, behavior, level_override);
 				}
+			}
+		}
+	}
+
+	// Check if this uses the new syntax where the source type is the first argument
+	if let Some(args) = &citation.raw_args {
+		if !args.is_empty() {
+			// Try Git sources first (since git is the most common)
+			if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
+				return execute_git_source_validation(git_source, behavior, level_override);
+			}
+
+			// Try HTTP sources
+			if let Some(http_source) = http::try_construct_http_source_from_citation_args(args) {
+				return execute_http_source_validation(http_source, behavior, level_override);
+			}
+
+			// Try mock sources
+			if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
+				return execute_mock_source_validation(mock_source, behavior, level_override);
 			}
 		}
 	}
