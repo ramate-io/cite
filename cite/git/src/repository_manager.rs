@@ -1,60 +1,86 @@
 use crate::GitSourceError;
 use git2::{FetchOptions, RemoteCallbacks, Repository};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 /// Builder for fetching and preparing git repositories
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepositoryBuilder {
 	remote_url: String,
+	parent_dir: Option<PathBuf>,
 }
 
 impl Default for RepositoryBuilder {
 	fn default() -> Self {
-		Self { remote_url: String::new() }
+		Self { 
+			remote_url: String::new(),
+			parent_dir: None,
+		}
 	}
 }
 
 impl RepositoryBuilder {
 	/// Create a new repository builder for the given remote URL
 	pub fn new(remote_url: String) -> Self {
-		Self { remote_url }
+		Self { 
+			remote_url,
+			parent_dir: None,
+		}
+	}
+
+	/// Create a new repository builder with a custom parent directory
+	pub fn with_parent_dir(remote_url: String, parent_dir: PathBuf) -> Self {
+		Self { 
+			remote_url,
+			parent_dir: Some(parent_dir),
+		}
 	}
 
 	/// Get the target directory for git repositories
-	fn get_target_dir() -> Result<PathBuf, GitSourceError> {
-		// Use CARGO_TARGET_DIR if set, otherwise default to target/cite-git
-		let target_dir = std::env::var("CARGO_TARGET_DIR")
-			.map(PathBuf::from)
-			.unwrap_or_else(|_| PathBuf::from("target"))
-			.join("cite-git");
+	pub fn get_target_dir(&self) -> Result<PathBuf, GitSourceError> {
+		let base_dir = if let Some(ref parent_dir) = self.parent_dir {
+			parent_dir.clone()
+		} else {
+			// Use CARGO_TARGET_DIR if set, otherwise default to target/cite-git
+			std::env::var("CARGO_TARGET_DIR")
+				.map(PathBuf::from)
+				.unwrap_or_else(|_| PathBuf::from("target"))
+				.join("cite-git")
+		};
 
-		std::fs::create_dir_all(&target_dir).map_err(|e| {
+		std::fs::create_dir_all(&base_dir).map_err(|e| {
 			GitSourceError::InvalidRemote(format!("Failed to create target directory: {}", e))
 		})?;
 
-		Ok(target_dir)
+		Ok(base_dir)
 	}
 
-	/// Generate a unique directory name for a repository
-	fn generate_repo_dir_name(remote_url: &str) -> String {
-		let mut hasher = DefaultHasher::new();
-		remote_url.hash(&mut hasher);
-		let hash = hasher.finish();
-
-		format!("repo_{:x}", hash)
+	/// Generate a simple directory name for a repository
+	pub fn generate_repo_dir_name(remote_url: &str) -> String {
+		// Extract the repo name from the URL
+		// e.g., "https://github.com/ramate-io/cite.git" -> "cite"
+		// e.g., "https://github.com/user/repo-name.git" -> "repo-name"
+		if let Some(last_part) = remote_url.split('/').last() {
+			if last_part.ends_with(".git") {
+				return last_part[..last_part.len() - 4].to_string();
+			}
+			return last_part.to_string();
+		}
+		
+		// Fallback: use a sanitized version of the URL
+		remote_url.replace([':', '/', '.'], "_")
 	}
 
 	/// Fetch the repository and return a RepositoryManager
 	pub fn fetch(self) -> Result<RepositoryManager, GitSourceError> {
-		let target_dir = Self::get_target_dir()?;
+		let target_dir = self.get_target_dir()?;
 		let repo_dir_name = Self::generate_repo_dir_name(&self.remote_url);
 		let repo_path = target_dir.join(repo_dir_name);
 
-		// If the repository already exists, just update it
+		// If the repository already exists, check if we need to update it
 		if repo_path.exists() {
-			Self::update_existing_repository(&repo_path, &self.remote_url)?;
+			// Try to update the repository to get latest changes
+			// This is a best-effort operation - if it fails, we'll still use the existing repo
+			let _ = Self::update_existing_repository(&repo_path, &self.remote_url);
 		} else {
 			// Clone the repository
 			let mut callbacks = RemoteCallbacks::new();
@@ -69,6 +95,8 @@ impl RepositoryBuilder {
 
 		Ok(RepositoryManager::new(repo_path))
 	}
+
+
 
 	/// Update an existing repository
 	fn update_existing_repository(
@@ -162,18 +190,24 @@ mod tests {
 
 	#[test]
 	fn test_generate_repo_dir_name() {
-		let dir1 = RepositoryBuilder::generate_repo_dir_name("https://github.com/ramate-io/cite");
-		let dir2 = RepositoryBuilder::generate_repo_dir_name("https://github.com/ramate-io/cite");
-		let dir3 = RepositoryBuilder::generate_repo_dir_name("https://github.com/other/repo");
-
-		assert_eq!(dir1, dir2);
-		assert_ne!(dir1, dir3);
-		assert!(dir1.starts_with("repo_"));
+		assert_eq!(
+			RepositoryBuilder::generate_repo_dir_name("https://github.com/ramate-io/cite.git"),
+			"cite"
+		);
+		assert_eq!(
+			RepositoryBuilder::generate_repo_dir_name("https://github.com/user/repo-name.git"),
+			"repo-name"
+		);
+		assert_eq!(
+			RepositoryBuilder::generate_repo_dir_name("https://gitlab.com/group/project"),
+			"project"
+		);
 	}
 
 	#[test]
 	fn test_get_target_dir() {
-		let target_dir = RepositoryBuilder::get_target_dir().unwrap();
+		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
+		let target_dir = builder.get_target_dir().unwrap();
 		assert!(target_dir.exists());
 		assert!(target_dir.is_dir());
 	}
@@ -188,5 +222,82 @@ mod tests {
 	fn test_repository_manager_new() {
 		let manager = RepositoryManager::new(PathBuf::from("/tmp/test"));
 		assert_eq!(manager.path(), &PathBuf::from("/tmp/test"));
+	}
+
+	#[test]
+	fn test_repository_fetch_new_repo() {
+		// Test fetching a new repository
+		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
+		let result = builder.fetch();
+		
+		// This should succeed and create the repository
+		assert!(result.is_ok());
+		
+		let manager = result.unwrap();
+		assert!(manager.repo_path.exists());
+		assert!(manager.repo_path.join(".git").exists());
+		
+		// Test that we can get the repository
+		let repo = manager.get_repository().unwrap();
+		assert!(!repo.is_bare());
+		
+		// Test that the revision exists
+		assert!(manager.revision_exists("main"));
+	}
+
+	#[test]
+	fn test_repository_fetch_existing_repo() {
+		// Test fetching an existing repository (should update it)
+		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
+		let result = builder.fetch();
+		
+		// This should succeed
+		assert!(result.is_ok());
+		
+		let manager = result.unwrap();
+		assert!(manager.repo_path.exists());
+		
+		// Test that we can still get the repository after update
+		let repo = manager.get_repository().unwrap();
+		assert!(!repo.is_bare());
+	}
+
+	#[test]
+	fn test_revision_exists() {
+		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
+		let manager = builder.fetch().unwrap();
+		
+		// Test that main branch exists
+		assert!(manager.revision_exists("main"));
+		
+		// Test that a specific commit exists (using a known commit from the repo)
+		assert!(manager.revision_exists("7a6e85985fbfb8f2035a66bccb047ea46d419d78"));
+		
+		// Test that a non-existent revision returns false
+		assert!(!manager.revision_exists("nonexistent-commit"));
+	}
+
+	#[test]
+	fn test_custom_parent_dir() {
+		// Test using a custom parent directory
+		let temp_dir = std::env::temp_dir().join("cite-git-test");
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/ramate-io/cite.git".to_string(),
+			temp_dir.clone()
+		);
+		
+		let target_dir = builder.get_target_dir().unwrap();
+		assert_eq!(target_dir, temp_dir);
+		
+		// Test fetching with custom directory
+		let result = builder.fetch();
+		assert!(result.is_ok());
+		
+		let manager = result.unwrap();
+		assert!(manager.repo_path.starts_with(&temp_dir));
+		assert!(manager.repo_path.exists());
+		
+		// Clean up
+		let _ = std::fs::remove_dir_all(&temp_dir);
 	}
 }
