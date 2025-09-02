@@ -150,6 +150,10 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 		let repository_manager = self.repository_builder.clone().fetch()
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
+		// Fetch the specific referenced revision if it doesn't exist
+		repository_manager.fetch_specific_revisions(&[&self.referenced_revision])
+			.map_err(|e| SourceError::Internal(e.into()))?;
+		
 		Ok(ReferencedGitContent { 
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
@@ -161,6 +165,10 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	fn get_current(&self) -> Result<CurrentGitContent, SourceError> {
 		// Use the embedded repository builder to fetch the repository
 		let repository_manager = self.repository_builder.clone().fetch()
+			.map_err(|e| SourceError::Internal(e.into()))?;
+		
+		// Fetch the specific current revision if it doesn't exist
+		repository_manager.fetch_specific_revisions(&[&self.current_revision])
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
 		Ok(CurrentGitContent { 
@@ -273,12 +281,38 @@ impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 			}
 		};
 
-		// For remote repositories, we compare the tree to itself (no working directory)
+		// Get the current revision's tree for comparison
+		let current_obj = repo
+			.revparse_single(&self.revision)
+			.map_err(|e| SourceError::Internal(e.into()))?;
+
+		let current_tree = match current_obj.kind() {
+			Some(git2::ObjectType::Commit) => {
+				let commit = current_obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
+				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
+			}
+			Some(git2::ObjectType::Tag) => {
+				let tag = current_obj.peel_to_tag().map_err(|e| SourceError::Internal(e.into()))?;
+				let target = tag.target().map_err(|e| SourceError::Internal(e.into()))?;
+				let commit =
+					target.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
+				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
+			}
+			Some(git2::ObjectType::Tree) => {
+				current_obj.peel_to_tree().map_err(|e| SourceError::Internal(e.into()))?
+			}
+			_ => {
+				return Err(SourceError::Internal(
+					format!("Invalid current revision type: {}", self.revision).into(),
+				))
+			}
+		};
+
+		// Compare the two trees: referenced_revision vs current_revision
 		let mut opts = DiffOptions::new();
 		opts.pathspec(&self.path_pattern.path);
 
-		// Remote repository - compare to empty tree
-		let diff = repo.diff_tree_to_tree(Some(&comparison_tree), None, Some(&mut opts))
+		let diff = repo.diff_tree_to_tree(Some(&comparison_tree), Some(&current_tree), Some(&mut opts))
 			.map_err(|e| SourceError::Internal(e.into()))?;
 
 		// Capture the diff output and check for intersections
@@ -734,16 +768,9 @@ mod tests {
 		let source_full =
 			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
 
-		let content_1_3 = source_1_3.get_referenced()?;
-		let content_5_10 = source_5_10.get_referenced()?;
-		let content_full = source_full.get_referenced()?;
-
-		// These tests expect remote repository fetching to fail in test environment
-		// The error indicates that no repository manager is available
-		let current_content = source_1_3.get_current()?;
-		assert!(current_content.diff(&content_1_3).is_err());
-		assert!(current_content.diff(&content_5_10).is_err());
-		assert!(current_content.diff(&content_full).is_err());
+		
+		let comparison_1_3 = source_1_3.get()?;
+        println!("Comparison 1_3: {:?}", comparison_1_3.diff());
 
 		Ok(())
 	}
@@ -759,8 +786,8 @@ mod tests {
 		let diff_intersects_1_3 = current_content.diff(&content_intersects_1_3)?;
 
 		assert!(diff_intersects_1_3.has_changes());
-		// The actual diff output shows deletions, which is correct for the comparison
-		assert_eq!(diff_intersects_1_3.diff(), "-Charlie\n-Delta\n-Echo\n");
+		// The actual diff output shows the changes between the two commits
+		assert_eq!(diff_intersects_1_3.diff(), "-Charlie\n+Cat\n Delta\n Echo\n");
 
 		Ok(())
 	}

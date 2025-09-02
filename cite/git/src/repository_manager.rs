@@ -11,28 +11,19 @@ pub struct RepositoryBuilder {
 
 impl Default for RepositoryBuilder {
 	fn default() -> Self {
-		Self { 
-			remote_url: String::new(),
-			parent_dir: None,
-		}
+		Self { remote_url: String::new(), parent_dir: None }
 	}
 }
 
 impl RepositoryBuilder {
 	/// Create a new repository builder for the given remote URL
 	pub fn new(remote_url: String) -> Self {
-		Self { 
-			remote_url,
-			parent_dir: None,
-		}
+		Self { remote_url, parent_dir: None }
 	}
 
 	/// Create a new repository builder with a custom parent directory
 	pub fn with_parent_dir(remote_url: String, parent_dir: PathBuf) -> Self {
-		Self { 
-			remote_url,
-			parent_dir: Some(parent_dir),
-		}
+		Self { remote_url, parent_dir: Some(parent_dir) }
 	}
 
 	/// Get the target directory for git repositories
@@ -65,7 +56,7 @@ impl RepositoryBuilder {
 			}
 			return last_part.to_string();
 		}
-		
+
 		// Fallback: use a sanitized version of the URL
 		remote_url.replace([':', '/', '.'], "_")
 	}
@@ -96,8 +87,6 @@ impl RepositoryBuilder {
 		Ok(RepositoryManager::new(repo_path))
 	}
 
-
-
 	/// Update an existing repository
 	fn update_existing_repository(
 		repo_path: &Path,
@@ -120,8 +109,13 @@ impl RepositoryBuilder {
 		let mut fetch_options = FetchOptions::new();
 		fetch_options.remote_callbacks(callbacks);
 
+		// Fetch all branches and tags to ensure we have the latest symbols
 		remote
-			.fetch(&["refs/heads/*:refs/remotes/origin/*"], Some(&mut fetch_options), None)
+			.fetch(
+				&["refs/heads/*:refs/remotes/origin/*", "refs/tags/*:refs/tags/*"],
+				Some(&mut fetch_options),
+				None,
+			)
 			.map_err(|e| GitSourceError::Git(e))?;
 
 		Ok(())
@@ -165,6 +159,30 @@ impl RepositoryManager {
 	/// Get the repository at the managed path
 	pub fn get_repository(&self) -> Result<Repository, GitSourceError> {
 		Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))
+	}
+
+	/// Fetch specific revisions that are needed
+	pub fn fetch_specific_revisions(&self, revisions: &[&str]) -> Result<(), GitSourceError> {
+		let repo = Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))?;
+		let mut remote = repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
+
+		let mut callbacks = RemoteCallbacks::new();
+		callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default());
+
+		let mut fetch_options = FetchOptions::new();
+		fetch_options.remote_callbacks(callbacks);
+
+		// For each revision, try to fetch it if it doesn't exist locally
+		for revision in revisions {
+			if !self.revision_exists(revision) {
+				// Try to fetch this specific commit
+				// Note: This is a best-effort approach - some commits might not be fetchable
+				// if they're not reachable from any ref
+				let _ = remote.fetch(&[revision], Some(&mut fetch_options), None);
+			}
+		}
+
+		Ok(())
 	}
 }
 
@@ -229,18 +247,18 @@ mod tests {
 		// Test fetching a new repository
 		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
 		let result = builder.fetch();
-		
+
 		// This should succeed and create the repository
 		assert!(result.is_ok());
-		
+
 		let manager = result.unwrap();
 		assert!(manager.repo_path.exists());
 		assert!(manager.repo_path.join(".git").exists());
-		
+
 		// Test that we can get the repository
 		let repo = manager.get_repository().unwrap();
 		assert!(!repo.is_bare());
-		
+
 		// Test that the revision exists
 		assert!(manager.revision_exists("main"));
 	}
@@ -250,13 +268,13 @@ mod tests {
 		// Test fetching an existing repository (should update it)
 		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
 		let result = builder.fetch();
-		
+
 		// This should succeed
 		assert!(result.is_ok());
-		
+
 		let manager = result.unwrap();
 		assert!(manager.repo_path.exists());
-		
+
 		// Test that we can still get the repository after update
 		let repo = manager.get_repository().unwrap();
 		assert!(!repo.is_bare());
@@ -266,13 +284,13 @@ mod tests {
 	fn test_revision_exists() {
 		let builder = RepositoryBuilder::new("https://github.com/ramate-io/cite.git".to_string());
 		let manager = builder.fetch().unwrap();
-		
+
 		// Test that main branch exists
 		assert!(manager.revision_exists("main"));
-		
+
 		// Test that a specific commit exists (using a known commit from the repo)
 		assert!(manager.revision_exists("7a6e85985fbfb8f2035a66bccb047ea46d419d78"));
-		
+
 		// Test that a non-existent revision returns false
 		assert!(!manager.revision_exists("nonexistent-commit"));
 	}
@@ -283,21 +301,48 @@ mod tests {
 		let temp_dir = std::env::temp_dir().join("cite-git-test");
 		let builder = RepositoryBuilder::with_parent_dir(
 			"https://github.com/ramate-io/cite.git".to_string(),
-			temp_dir.clone()
+			temp_dir.clone(),
 		);
-		
+
 		let target_dir = builder.get_target_dir().unwrap();
 		assert_eq!(target_dir, temp_dir);
-		
+
 		// Test fetching with custom directory
 		let result = builder.fetch();
 		assert!(result.is_ok());
-		
+
 		let manager = result.unwrap();
 		assert!(manager.repo_path.starts_with(&temp_dir));
 		assert!(manager.repo_path.exists());
-		
+
 		// Clean up
 		let _ = std::fs::remove_dir_all(&temp_dir);
+	}
+
+	#[test]
+	fn test_fetch_specific_revisions() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/ramate-io/cite".to_string(),
+			temp_dir.path().to_path_buf(),
+		);
+		let manager = builder.fetch().unwrap();
+
+		// Test fetching a specific commit hash
+		let result =
+			manager.fetch_specific_revisions(&["94dab273cf6c2abe8742d6d459ad45c96ca9b694"]);
+		assert!(result.is_ok());
+
+		// Verify the revision now exists
+		assert!(manager.revision_exists("94dab273cf6c2abe8742d6d459ad45c96ca9b694"));
+
+		// Test fetching multiple revisions
+		let result =
+			manager.fetch_specific_revisions(&["main", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2"]);
+		assert!(result.is_ok());
+
+		// Verify both revisions exist
+		assert!(manager.revision_exists("main"));
+		assert!(manager.revision_exists("2bcceb14934dbe0803ddb70bc8952a0c33f931e2"));
 	}
 }
