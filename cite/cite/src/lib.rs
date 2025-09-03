@@ -843,27 +843,11 @@ fn generate_git_source_reference_from_args_fallback(args: &[syn::Expr]) -> Strin
 fn generate_git_source_reference(git_source: &cite_git::GitSource) -> String {
 	use cite_core::Source;
 
-	let link_text = git_source.link();
-	let remote_url = &git_source.remote;
-	let file_path = &git_source.path_pattern.path;
-	let rev = &git_source.referenced_revision;
+	let name = git_source.name();
+	let url = git_source.link();
 
-	// Try to create a hyperlink for GitHub URLs
-	if remote_url.contains("github.com") {
-		// Extract owner/repo from GitHub URL
-		if let Some(_repo_part) = remote_url.split("github.com/").nth(1) {
-			return format!(
-				"[{}]({}/blob/{}/{}#L1)",
-				link_text,
-				remote_url.trim_end_matches(".git"),
-				rev,
-				file_path
-			);
-		}
-	}
-
-	// Fallback for non-GitHub URLs
-	format!("[{}]({})", link_text, remote_url)
+	// Format as [name](url)
+	format!("[{}]({})", name, url)
 }
 
 /// Generate HTTP source reference with hyperlink from source object

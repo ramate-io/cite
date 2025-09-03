@@ -117,6 +117,8 @@ pub struct GitSource {
 	pub current_revision: String,
 	/// The optional name of the source
 	pub name: String,
+	/// The formatted URL for documentation links
+	pub formatted_url: String,
 	/// Repository builder for handling remote repository operations
 	#[serde(skip)]
 	repository_builder: RepositoryBuilder,
@@ -140,6 +142,31 @@ impl GitSource {
 
 		let name = name.as_deref().unwrap_or(&format!("{}/{}@{}", remote, path_pattern, referenced_revision)).to_string();
 		
+		// Compute the formatted URL for GitHub links
+		let formatted_url = if remote.contains("github.com") {
+			// Determine if this is a file or directory
+			let is_file = {
+				let path = path_pattern.path.trim_end_matches('/');
+				// Check for common file extensions
+				path.contains('.') && !path.ends_with('/')
+			};
+			let github_path = if is_file {
+				"blob"
+			} else {
+				"tree"
+			};
+			
+			format!(
+				"{}/{}/{}/{}",
+				remote.trim_end_matches(".git"),
+				github_path,
+				referenced_revision,
+				path_pattern.path
+			)
+		} else {
+			remote.to_string()
+		};
+		
 		let id = Id::new(format!("git_{}_{}_{}_{}", remote, path, referenced_revision, current_revision));
 		Ok(Self {
 			id,
@@ -148,6 +175,7 @@ impl GitSource {
 			referenced_revision: referenced_revision.to_string(),
 			current_revision: current_revision.to_string(),
 			name,
+			formatted_url,
 			repository_builder: RepositoryBuilder::new(remote.to_string()),
 		})
 	}
@@ -164,8 +192,8 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn link(&self) -> &str {
-		// Use the name as the link text for documentation
-		&self.name
+		// Return the formatted URL for documentation links
+		&self.formatted_url
 	}
 
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
