@@ -11,23 +11,13 @@ pub fn execute_kwargs_source_validation(
 
 	match citation.get_src().ok()?.as_str() {
 		"git" => {
-			// Construct GitSource from kwargs
-			let remote = kwargs.get("remote").and_then(|v| v.as_str())?;
-			let ref_rev = kwargs.get("ref_rev").and_then(|v| v.as_str())?;
-			let cur_rev = kwargs.get("cur_rev").and_then(|v| v.as_str())?;
-			let path = kwargs.get("path").and_then(|v| v.as_str())?;
-			let name = kwargs.get("name").and_then(|v| v.as_str());
-
-			let git_source = cite_git::GitSource::try_new(
-				remote,
-				path,
-				ref_rev,
-				cur_rev,
-				name.map(|s| s.to_string()),
-			)
-			.ok()?;
-
-			return execute_git_source_validation(git_source, behavior, level_override);
+			// Construct GitSource from kwargs using the utility function
+			match sources::git::try_get_git_source_from_kwargs(kwargs) {
+				Ok(git_source) => {
+					return execute_git_source_validation(git_source, behavior, level_override)
+				}
+				Err(e) => return Some(Err(e)),
+			}
 		}
 		"http" => {
 			// Construct HttpMatch from kwargs using the utility function
