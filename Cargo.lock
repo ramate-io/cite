@@ -185,6 +185,7 @@ dependencies = [
 name = "cite"
 version = "0.0.1"
 dependencies = [
+ "cite-cache",
  "cite-core",
  "cite-git",
  "cite-http",

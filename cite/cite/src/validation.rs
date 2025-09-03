@@ -30,42 +30,13 @@ pub fn execute_kwargs_source_validation(
 			return execute_git_source_validation(git_source, behavior, level_override);
 		}
 		"http" => {
-			// Construct HttpMatch from kwargs
-			let url = kwargs.get("url").and_then(|v| v.as_str())?;
-
-			// Parse optional parameters
-			let pattern = kwargs.get("pattern").and_then(|v| v.as_str());
-			let selector = kwargs.get("selector").and_then(|v| v.as_str());
-			let match_type = kwargs.get("match_type").and_then(|v| v.as_str());
-			let fragment = kwargs.get("fragment").and_then(|v| v.as_str());
-
-			// Determine the match expression based on parameters
-			let match_expression = if let Some(mt) = match_type {
-				match mt {
-					"full" => Some(cite_http::MatchExpression::full_document()),
-					"auto" => None, // Let auto-detection work
-					_ => return Some(Err(format!("unknown match_type: {}", mt))),
+			// Construct HttpMatch from kwargs using the utility function
+			match sources::http::try_get_http_source_from_kwargs(kwargs) {
+				Ok(http_source) => {
+					return execute_http_source_validation(http_source, behavior, level_override)
 				}
-			} else if let Some(pat) = pattern {
-				Some(cite_http::MatchExpression::regex(pat))
-			} else if let Some(sel) = selector {
-				Some(cite_http::MatchExpression::css_selector(sel))
-			} else if let Some(frag) = fragment {
-				Some(cite_http::MatchExpression::fragment(frag))
-			} else {
-				None // Let auto-detection work
-			};
-
-			// Construct the HttpMatch with the appropriate parameters
-			let http_source = cite_http::HttpMatch::try_new_for_macro(
-				url,
-				match_expression,
-				None, // No cache override for now
-			)
-			.ok()?;
-
-			// Execute HTTP validation
-			return execute_http_source_validation(http_source, behavior, level_override);
+				Err(e) => return Some(Err(e)),
+			}
 		}
 		"mock" => {
 			// Construct MockSource from kwargs using the utility function
