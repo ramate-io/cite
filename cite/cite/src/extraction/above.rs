@@ -25,17 +25,11 @@ pub fn parse_above_into_kwargs(
 				if let syn::Expr::Lit(expr_lit) = &meta_name_value.value {
 					if let syn::Lit::Str(lit_str) = &expr_lit.lit {
 						let doc_content = lit_str.value();
-						if doc_content.contains("<cite above>")
-							&& doc_content.contains("</cite above>")
+						if doc_content.contains("<cite above content [")
+							&& doc_content.contains("] end_content/>")
 						{
-							// Extract the content between the tags
+							// Extract the content from the pattern
 							if let Some(cite_content) = extract_cite_content(&doc_content) {
-								// Remove the <cite above> content from the doc comment
-								crate::documentation::remove_cite_above_from_doc_comment(
-									attr,
-									&doc_content,
-								);
-
 								// Parse the JSON content
 								return parse_json_content_to_kwargs(&cite_content);
 							}
@@ -48,20 +42,20 @@ pub fn parse_above_into_kwargs(
 
 	Err(syn::Error::new(
 		proc_macro2::Span::call_site(),
-		"no <cite above> block found in doc comments",
+		"no <cite above content [...] end_content/> pattern found in doc comments",
 	))
 }
 
-/// Extract content between <cite above> and </cite above> tags and remove the tags and content
+/// Extract content from <cite above content [...] end_content/> pattern
 fn extract_cite_content(doc_content: &str) -> Option<String> {
-	let start_tag = "<cite above>";
-	let end_tag = "</cite above>";
+	let start_tag = "<cite above content [";
+	let end_tag = "] end_content/>";
 
 	if let Some(start_pos) = doc_content.find(start_tag) {
 		if let Some(end_pos) = doc_content.find(end_tag) {
 			let start = start_pos + start_tag.len();
 			if start < end_pos {
-				return Some(doc_content[start..end_pos].trim().to_string());
+				return Some(doc_content[start..end_pos].to_string());
 			}
 		}
 	}

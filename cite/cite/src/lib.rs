@@ -197,7 +197,7 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 		kwargs.insert("src".to_string(), serde_json::Value::String(source_type));
 	}
 
-	// If source is "above", parse the doc comment and replace it
+	// If source is "above", parse the doc attribute and remove it
 	if kwargs.get("src").and_then(|v| v.as_str()) == Some("above") {
 		match extraction::above::parse_above_into_kwargs(&mut item) {
 			Ok(doc_kwargs) => {

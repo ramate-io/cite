@@ -24,8 +24,9 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 		"path": format!("examples/helper-macro-git/DOC_{}.md", doc_num)
 	});
 
+	// this syntax allows this to (1) be escaped, (2) be invisible to cargo doc, and (3) be invisible to rust analyzer
 	let doc_comment = format!(
-		"<div style=\"display: none;\"><cite above>\n{}\n</cite above></div>",
+		"<div style=\"display: none;\"><div <cite above content [{}] end_content/>/></div>",
 		serde_json::to_string_pretty(&json_data).unwrap()
 	);
 
