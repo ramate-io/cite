@@ -517,7 +517,7 @@ fn parse_single_source_syntax(args: Vec<Expr>) -> Result<Citation> {
 /// Handle citation on a function
 fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_macro2::TokenStream {
 	// Generate validation code that runs at compile time
-	let validation_code = generate_validation_code(&citation);
+	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
 
 	// Insert the validation as a const block at the beginning of the function
 	let validation_stmt: syn::Stmt = parse_quote! {
@@ -527,7 +527,7 @@ fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_mac
 	item_fn.block.stmts.insert(0, validation_stmt);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_fn.attrs, &citation);
+	add_citation_footnote_to_item(&mut item_fn.attrs, &citation, link_text, warning_text);
 
 	quote! { #item_fn }
 }
@@ -537,14 +537,14 @@ fn handle_struct_citation(
 	citation: Citation,
 	mut item_struct: ItemStruct,
 ) -> proc_macro2::TokenStream {
-	let validation_code = generate_validation_code(&citation);
+	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_struct.attrs, &citation);
+	add_citation_footnote_to_item(&mut item_struct.attrs, &citation, link_text, warning_text);
 
 	quote! {
 		#item_struct
@@ -558,14 +558,14 @@ fn handle_trait_citation(
 	citation: Citation,
 	mut item_trait: ItemTrait,
 ) -> proc_macro2::TokenStream {
-	let validation_code = generate_validation_code(&citation);
+	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_trait.attrs, &citation);
+	add_citation_footnote_to_item(&mut item_trait.attrs, &citation, link_text, warning_text);
 
 	quote! {
 		#item_trait
@@ -576,7 +576,7 @@ fn handle_trait_citation(
 
 /// Handle citation on an impl block
 fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_macro2::TokenStream {
-	let validation_code = generate_validation_code(&citation);
+	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
 
 	// Use counter for unique const name
 	let validation_const_name = syn::Ident::new(
@@ -585,7 +585,7 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_impl.attrs, &citation);
+	add_citation_footnote_to_item(&mut item_impl.attrs, &citation, link_text, warning_text);
 
 	quote! {
 		#item_impl
@@ -596,14 +596,14 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 
 /// Handle citation on a module
 fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2::TokenStream {
-	let validation_code = generate_validation_code(&citation);
+	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_mod.attrs, &citation);
+	add_citation_footnote_to_item(&mut item_mod.attrs, &citation, link_text, warning_text);
 
 	quote! {
 		#item_mod
@@ -614,7 +614,7 @@ fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2
 
 /// Handle citation on an enum
 fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_macro2::TokenStream {
-	let validation_code = generate_validation_code(&citation);
+	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
 
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
@@ -622,7 +622,7 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_enum.attrs, &citation);
+	add_citation_footnote_to_item(&mut item_enum.attrs, &citation, link_text, warning_text);
 
 	quote! {
 		#item_enum
@@ -632,9 +632,14 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 }
 
 /// Add citation footnote to doc comments
-fn add_citation_footnote_to_item(attrs: &mut Vec<syn::Attribute>, citation: &Citation) {
+fn add_citation_footnote_to_item(
+	attrs: &mut Vec<syn::Attribute>,
+	citation: &Citation,
+	link_text: Option<String>,
+	warning_text: String,
+) {
 	// Generate citation footnote
-	let footnote = generate_citation_footnote(citation);
+	let footnote = generate_citation_footnote(citation, link_text, warning_text);
 
 	// Create a new doc comment attribute
 	let doc_attr = parse_quote! {
@@ -646,7 +651,11 @@ fn add_citation_footnote_to_item(attrs: &mut Vec<syn::Attribute>, citation: &Cit
 }
 
 /// Generate citation footnote text
-fn generate_citation_footnote(citation: &Citation) -> String {
+fn generate_citation_footnote(
+	citation: &Citation,
+	link_text: Option<String>,
+	_warning_text: String,
+) -> String {
 	let mut footnote = String::new();
 
 	// Add citation badge linking to the cite repo
@@ -676,8 +685,9 @@ fn generate_citation_footnote(citation: &Citation) -> String {
 		}
 	}
 
-	// Generate source reference
-	let source_ref = generate_source_reference(citation);
+	// Use provided link text or generate fallback
+	let source_ref =
+		if let Some(link) = link_text { link } else { generate_source_reference(citation) };
 
 	// Add annotation and level modifiers
 	let mut modifiers = Vec::new();
@@ -714,7 +724,14 @@ fn generate_source_reference(citation: &Citation) -> String {
 					if path_expr.path.segments.len() == 1
 						&& path_expr.path.segments[0].ident == "git"
 					{
-						return generate_git_source_reference(args);
+						// Try to construct the GitSource and use its link method
+						if let Some(git_source) =
+							git::try_construct_git_source_from_citation_args(args)
+						{
+							return generate_git_source_reference(&git_source);
+						}
+						// Fallback to manual parsing if construction fails
+						return generate_git_source_reference_from_args_fallback(args);
 					} else if path_expr.path.segments.len() == 1
 						&& path_expr.path.segments[0].ident == "http"
 					{
@@ -733,20 +750,21 @@ fn generate_source_reference(citation: &Citation) -> String {
 	"Unknown source".to_string()
 }
 
-/// Generate git source reference with hyperlink
-fn generate_git_source_reference(args: &[syn::Expr]) -> String {
+/// Generate git source reference with hyperlink from macro arguments (fallback)
+fn generate_git_source_reference_from_args_fallback(args: &[syn::Expr]) -> String {
 	let mut remote = None;
 	let mut path = None;
 	let mut referenced_revision = None;
+	let mut name = None;
 
 	// Extract git source parameters
 	for arg in args {
 		if let syn::Expr::Assign(assign_expr) = arg {
 			if let syn::Expr::Path(left_path) = &*assign_expr.left {
 				if left_path.path.segments.len() == 1 {
-					let name = &left_path.path.segments[0].ident.to_string();
+					let param_name = &left_path.path.segments[0].ident.to_string();
 
-					match name.as_str() {
+					match param_name.as_str() {
 						"remote" => {
 							if let syn::Expr::Lit(syn::ExprLit {
 								lit: syn::Lit::Str(lit_str),
@@ -774,6 +792,15 @@ fn generate_git_source_reference(args: &[syn::Expr]) -> String {
 								referenced_revision = Some(lit_str.value());
 							}
 						}
+						"name" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								name = Some(lit_str.value());
+							}
+						}
 						_ => {}
 					}
 				}
@@ -783,15 +810,21 @@ fn generate_git_source_reference(args: &[syn::Expr]) -> String {
 
 	// Build the reference
 	if let (Some(remote_url), Some(file_path), Some(rev)) = (remote, path, referenced_revision) {
+		// Use the provided name as link text if available, otherwise use default format
+		let link_text = if let Some(custom_name) = name {
+			custom_name
+		} else {
+			let short_rev = if rev.len() > 8 { &rev[..8] } else { &rev };
+			format!("Git: {} @ {}", file_path, short_rev)
+		};
+
 		// Try to create a hyperlink for GitHub URLs
 		if remote_url.contains("github.com") {
 			// Extract owner/repo from GitHub URL
-			if let Some(repo_part) = remote_url.split("github.com/").nth(1) {
-				let _repo_part = repo_part.trim_end_matches(".git");
-				let short_rev = if rev.len() > 8 { &rev[..8] } else { &rev };
+			if let Some(_repo_part) = remote_url.split("github.com/").nth(1) {
 				return format!(
 					"[{}]({}/blob/{}/{}#L1)",
-					format!("Git: {} @ {}", file_path, short_rev),
+					link_text,
 					remote_url.trim_end_matches(".git"),
 					rev,
 					file_path
@@ -800,14 +833,50 @@ fn generate_git_source_reference(args: &[syn::Expr]) -> String {
 		}
 
 		// Fallback for non-GitHub URLs
-		let short_rev = if rev.len() > 8 { &rev[..8] } else { &rev };
-		format!("Git: {} @ {} ({})", file_path, short_rev, remote_url)
+		format!("{} ({})", link_text, remote_url)
 	} else {
 		"Git source (incomplete parameters)".to_string()
 	}
 }
 
-/// Generate HTTP source reference with hyperlink
+/// Generate git source reference with hyperlink using GitSource
+fn generate_git_source_reference(git_source: &cite_git::GitSource) -> String {
+	use cite_core::Source;
+
+	let link_text = git_source.link();
+	let remote_url = &git_source.remote;
+	let file_path = &git_source.path_pattern.path;
+	let rev = &git_source.referenced_revision;
+
+	// Try to create a hyperlink for GitHub URLs
+	if remote_url.contains("github.com") {
+		// Extract owner/repo from GitHub URL
+		if let Some(_repo_part) = remote_url.split("github.com/").nth(1) {
+			return format!(
+				"[{}]({}/blob/{}/{}#L1)",
+				link_text,
+				remote_url.trim_end_matches(".git"),
+				rev,
+				file_path
+			);
+		}
+	}
+
+	// Fallback for non-GitHub URLs
+	format!("[{}]({})", link_text, remote_url)
+}
+
+/// Generate HTTP source reference with hyperlink from source object
+fn generate_http_source_reference_from_source(http_source: &cite_http::HttpMatch) -> String {
+	use cite_core::Source;
+
+	let url = http_source.source_url.as_str();
+	let link_text = http_source.link();
+
+	format!("[{}]({})", link_text, url)
+}
+
+/// Generate HTTP source reference with hyperlink from macro arguments
 fn generate_http_source_reference(args: &[syn::Expr]) -> String {
 	let mut url = None;
 	let mut pattern = None;
@@ -871,7 +940,15 @@ fn generate_http_source_reference(args: &[syn::Expr]) -> String {
 	}
 }
 
-/// Generate mock source reference
+/// Generate mock source reference from source object
+fn generate_mock_source_reference_from_source(mock_source: &cite_core::mock::MockSource) -> String {
+	use cite_core::Source;
+
+	let link_text = mock_source.link();
+	format!("[{}](https://github.com/ramate-io/cite#mock-sources)", link_text)
+}
+
+/// Generate mock source reference from macro arguments
 fn generate_mock_source_reference(args: &[syn::Expr]) -> String {
 	let mut same = None;
 	let mut changed = None;
@@ -927,20 +1004,56 @@ fn generate_mock_source_reference(args: &[syn::Expr]) -> String {
 	// Build the reference
 	if let Some(content) = same {
 		let preview = if content.len() > 50 { format!("{}...", &content[..50]) } else { content };
-		format!("Mock: same = \"{}\"", preview)
+		format!("[Mock: same = \"{}\"](https://github.com/ramate-io/cite#mock-sources)", preview)
 	} else if let Some((old, new)) = changed {
 		let old_preview = if old.len() > 30 { format!("{}...", &old[..30]) } else { old };
 		let new_preview = if new.len() > 30 { format!("{}...", &new[..30]) } else { new };
-		format!("Mock: changed = (\"{}\", \"{}\")", old_preview, new_preview)
+		format!(
+			"[Mock: changed = (\"{}\", \"{}\")](https://github.com/ramate-io/cite#mock-sources)",
+			old_preview, new_preview
+		)
 	} else {
-		"Mock source (incomplete parameters)".to_string()
+		"[Mock source (incomplete parameters)](https://github.com/ramate-io/cite#mock-sources)"
+			.to_string()
 	}
 }
 
+/// Construct a source from citation arguments and return its link text
+fn construct_source_from_citation(citation: &Citation) -> Option<String> {
+	if let Some(args) = &citation.raw_args {
+		if !args.is_empty() {
+			// Try Git sources first (since git is the most common)
+			if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
+				return Some(generate_git_source_reference(&git_source));
+			}
+
+			// Try HTTP sources
+			if let Some(http_source) = http::try_construct_http_source_from_citation_args(args) {
+				return Some(generate_http_source_reference_from_source(&http_source));
+			}
+
+			// Try mock sources
+			if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
+				return Some(generate_mock_source_reference_from_source(&mock_source));
+			}
+		}
+	}
+
+	// Try to construct and execute MockSource using the traditional expression parsing
+	if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
+		return Some(generate_mock_source_reference_from_source(&mock_source));
+	}
+
+	None
+}
+
 /// Generate validation code that executes the user's source expression with the real API
-fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
-	// Actually try to perform validation during macro expansion
-	let validation_result = attempt_macro_expansion_validation(citation);
+/// Returns (link_text, warning_text, validation_code)
+fn generate_validation_code(
+	citation: &Citation,
+) -> (Option<String>, String, proc_macro2::TokenStream) {
+	// Try to construct the source first
+	let link_text = construct_source_from_citation(citation);
 	let source_expr = &citation.source_expr;
 
 	let reason_comment = if let Some(_reason) = &citation.reason {
@@ -964,8 +1077,15 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 		proc_macro2::Span::call_site(),
 	);
 
+	// Actually try to perform validation during macro expansion
+	let validation_result = attempt_macro_expansion_validation(citation);
+	let warning_text = match &validation_result {
+		Ok(Some(warning)) => warning.clone(),
+		_ => String::new(),
+	};
+
 	// Generate code based on the validation result from macro expansion
-	match validation_result {
+	let validation_code = match validation_result {
 		Ok(None) => {
 			// Validation passed
 			if is_keyword_syntax {
@@ -1034,7 +1154,9 @@ fn generate_validation_code(citation: &Citation) -> proc_macro2::TokenStream {
 				}
 			}
 		}
-	}
+	};
+
+	(link_text, warning_text, validation_code)
 }
 
 /// Attempt to perform validation during macro expansion

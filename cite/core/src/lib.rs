@@ -169,6 +169,10 @@ pub trait Source<R: Referenced, C: Current<R, D>, D: Diff> {
 		self.id().as_str()
 	}
 
+	fn link(&self) -> &str {
+		self.id().as_str()
+	}
+
 	fn get_referenced(&self) -> Result<R, SourceError>;
 
 	fn get_current(&self) -> Result<C, SourceError>;

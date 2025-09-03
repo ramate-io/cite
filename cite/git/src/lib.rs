@@ -163,6 +163,11 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 		&self.name
 	}
 
+	fn link(&self) -> &str {
+		// Use the name as the link text for documentation
+		&self.name
+	}
+
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
 		// Use the embedded repository builder to fetch the repository
 		let repository_manager = self.repository_builder.clone().fetch()

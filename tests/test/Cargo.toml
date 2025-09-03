@@ -16,5 +16,8 @@ cite = { workspace = true }
 [dev-dependencies]
 trybuild = { workspace = true }
 
+[features]
+default = []
+
 [lints]
 workspace = true
