@@ -1,6 +1,6 @@
-I am now adding things.
-All 
-of
-these things
-will be 
-changed
+I am now adding some things.
+All of which
+of these
+some things
+will invariably be 
+changed in time.
