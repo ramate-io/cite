@@ -695,8 +695,10 @@ fn generate_global_citation_formatting() -> String {
 	</div>\n\n"
 	);
 
-	// Add behavior hint box
+	// Add behavior hint boxes
 	let behavior = cite_core::CitationBehavior::from_features();
+
+	// Global behavior
 	match behavior.global {
 		cite_core::CitationGlobal::Strict => {
 			global_formatting.push_str(
@@ -709,6 +711,49 @@ fn generate_global_citation_formatting() -> String {
 			global_formatting.push_str(
 				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
 	This code uses lenient citation validation.\
+	</div>\n\n",
+			);
+		}
+	}
+
+	// Annotation behavior
+	match behavior.annotation {
+		cite_core::CitationAnnotation::Footnote => {
+			global_formatting.push_str(
+				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
+	Annotations are required for citations.\
+	</div>\n\n",
+			);
+		}
+		cite_core::CitationAnnotation::Any => {
+			global_formatting.push_str(
+				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
+	Annotations are optional for citations.\
+	</div>\n\n",
+			);
+		}
+	}
+
+	// Level behavior
+	match behavior.level {
+		cite_core::CitationLevel::Error => {
+			global_formatting.push_str(
+				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
+	Citation validation errors will fail compilation.\
+	</div>\n\n",
+			);
+		}
+		cite_core::CitationLevel::Warn => {
+			global_formatting.push_str(
+				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
+	Citation validation issues will generate warnings.\
+	</div>\n\n",
+			);
+		}
+		cite_core::CitationLevel::Silent => {
+			global_formatting.push_str(
+				"\n\n<div style=\"background-color:#FFEBEE; border-left:4px solid #F44336; padding:8px;\">\
+	Citation validation issues will be silently ignored.\
 	</div>\n\n",
 			);
 		}
@@ -758,12 +803,12 @@ fn generate_citation_footnote(
 		// Handle multiline warning text by splitting and prefixing each line with tab
 		let formatted_warning = warning_text
 			.lines()
-			.map(|line| format!("\t{}", line))
+			.map(|line| format!("\t>{}", line))
 			.collect::<Vec<_>>()
 			.join("\n");
 
 		// warning box for warning text
-		footnote.push_str(&format!("\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:20px;\">\n\n{}\n\n</div>", formatted_warning));
+		footnote.push_str(&format!("\n\n\t**Warning!**\n\n{}", formatted_warning));
 	}
 
 	footnote

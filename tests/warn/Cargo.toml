@@ -9,8 +9,10 @@ homepage = { workspace = true }
 publish = { workspace = true }
 rust-version = { workspace = true }
 
-[dev-dependencies]
+[dependencies]
 cite = { workspace = true, features = ["warn"] }
+
+[dev-dependencies]
 trybuild = { workspace = true }
 
 [lints]
