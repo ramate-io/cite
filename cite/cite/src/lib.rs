@@ -298,7 +298,12 @@ fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_mac
 	item_fn.block.stmts.insert(0, validation_stmt);
 
 	// Add citation footnote to doc comments
-			documentation::add_citation_footnote_to_item(&mut item_fn.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(
+		&mut item_fn.attrs,
+		&citation,
+		link_text,
+		warning_text,
+	);
 
 	quote! { #item_fn }
 }
@@ -315,7 +320,12 @@ fn handle_struct_citation(
 	);
 
 	// Add citation footnote to doc comments
-			documentation::add_citation_footnote_to_item(&mut item_struct.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(
+		&mut item_struct.attrs,
+		&citation,
+		link_text,
+		warning_text,
+	);
 
 	quote! {
 		#item_struct
@@ -336,7 +346,12 @@ fn handle_trait_citation(
 	);
 
 	// Add citation footnote to doc comments
-			documentation::add_citation_footnote_to_item(&mut item_trait.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(
+		&mut item_trait.attrs,
+		&citation,
+		link_text,
+		warning_text,
+	);
 
 	quote! {
 		#item_trait
@@ -356,7 +371,12 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-			documentation::add_citation_footnote_to_item(&mut item_impl.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(
+		&mut item_impl.attrs,
+		&citation,
+		link_text,
+		warning_text,
+	);
 
 	quote! {
 		#item_impl
@@ -374,7 +394,12 @@ fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2
 	);
 
 	// Add citation footnote to doc comments
-			documentation::add_citation_footnote_to_item(&mut item_mod.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(
+		&mut item_mod.attrs,
+		&citation,
+		link_text,
+		warning_text,
+	);
 
 	quote! {
 		#item_mod
@@ -393,7 +418,12 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-			documentation::add_citation_footnote_to_item(&mut item_enum.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(
+		&mut item_enum.attrs,
+		&citation,
+		link_text,
+		warning_text,
+	);
 
 	quote! {
 		#item_enum
@@ -401,8 +431,6 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 		const #validation_const_name: () = { #validation_code };
 	}
 }
-
-
 
 /// Generate validation code that executes the user's source expression with the real API
 /// Returns (link_text, warning_text, validation_code)
@@ -563,7 +591,3 @@ fn attempt_macro_expansion_validation(
 	// The user can always add explicit validation later
 	Ok(None)
 }
-
-
-
-

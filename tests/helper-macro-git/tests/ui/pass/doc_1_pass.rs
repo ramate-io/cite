@@ -1,5 +1,5 @@
 use cite::cite;
-use cite_helper_macro_git_test::helper_macro_git;
+use helper_macro_git::helper_macro_git;
 
 #[helper_macro_git(doc = 1)]
 #[cite(above, reason = "Testing git source")]
