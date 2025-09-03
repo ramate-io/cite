@@ -25,6 +25,7 @@ cite-git = { workspace = true }
 tempfile = { workspace = true }
 
 [features]
+default = []
 annotationless = ["cite-core/annotationless"]
 warn = ["cite-core/warn"]
 silent = ["cite-core/silent"]

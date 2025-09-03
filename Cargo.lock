@@ -258,7 +258,6 @@ name = "cite-git"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "chrono",
  "cite-core",
  "git2",
  "glob",

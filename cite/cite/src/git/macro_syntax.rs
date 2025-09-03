@@ -28,6 +28,9 @@
 //! - `current_revision = "main"` - Git commit hash or reference for the current content to compare against
 //! - `path = "README.md"` - File path relative to repository root
 //!
+//! **Optional:**
+//! - `name = "My Custom Name"` - Custom name for the source (if not provided, a default name is generated)
+//!
 //! **Path Options:**
 //! - `path = "src/lib.rs#L1-L10"` - File with line range specification
 //! - `path = "src/**/*.rs"` - Glob pattern for multiple files
@@ -50,11 +53,12 @@
 //!        current_revision = "main",
 //!        path = "README.md")]
 //!
-//! // Line range validation
+//! // Line range validation with custom name
 //! #[cite(git, remote = "https://github.com/ramate-io/cite",
 //!        referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
 //!        current_revision = "main",
-//!        path = "src/lib.rs#L1-L10")]
+//!        path = "src/lib.rs#L1-L10",
+//!        name = "Core Library Functions")]
 //!
 //! // Glob pattern validation
 //! #[cite(git, remote = "https://github.com/ramate-io/cite",
@@ -93,6 +97,7 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 			let mut referenced_revision = None;
 			let mut current_revision = None;
 			let mut path = None;
+			let mut optional_name = None;
 
 			for arg in &args[1..] {
 				if let Expr::Assign(assign_expr) = arg {
@@ -129,6 +134,13 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 										path = Some(path_str);
 									}
 								}
+								"name" => {
+									if let Some(name_str) =
+										extract_string_literal(&assign_expr.right)
+									{
+										optional_name = Some(name_str);
+									}
+								}
 								_ => continue, // Unknown parameter, skip
 							}
 						}
@@ -150,6 +162,7 @@ pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 					&path_str,
 					&referenced_revision_str,
 					&current_revision_str,
+					optional_name,
 				)
 				.ok();
 			}
@@ -373,5 +386,51 @@ mod tests {
 		assert_eq!(git_source.path_pattern.path, "README.md");
 		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
 		assert_eq!(git_source.current_revision, "main");
+	}
+
+	#[test]
+	fn test_parse_git_with_name_parameter() {
+		let args: Vec<Expr> = vec![
+			parse_quote!(git),
+			parse_quote!(remote = "https://github.com/ramate-io/cite"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
+			parse_quote!(path = "README.md"),
+			parse_quote!(name = "My Custom Name"),
+		];
+
+		let result = try_parse_from_citation_args(&args);
+		assert!(result.is_some());
+
+		let git_source = result.unwrap();
+		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(git_source.path_pattern.path, "README.md");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
+		assert_eq!(git_source.name, "My Custom Name");
+	}
+
+	#[test]
+	fn test_parse_git_without_name_parameter() {
+		let args: Vec<Expr> = vec![
+			parse_quote!(git),
+			parse_quote!(remote = "https://github.com/ramate-io/cite"),
+			parse_quote!(referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694"),
+			parse_quote!(current_revision = "main"),
+			parse_quote!(path = "README.md"),
+		];
+
+		let result = try_parse_from_citation_args(&args);
+		assert!(result.is_some());
+
+		let git_source = result.unwrap();
+		assert_eq!(git_source.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(git_source.path_pattern.path, "README.md");
+		assert_eq!(git_source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(git_source.current_revision, "main");
+		// When no name is provided, it should use the default generated name
+		assert!(git_source.name.contains("https://github.com/ramate-io/cite"));
+		assert!(git_source.name.contains("README.md"));
+		assert!(git_source.name.contains("94dab273cf6c2abe8742d6d459ad45c96ca9b694"));
 	}
 }

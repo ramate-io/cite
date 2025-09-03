@@ -1,3 +1,27 @@
+use cite::cite;
+
+/// Test the git source with citation footnote
+#[cite(
+	git,
+	remote = "https://github.com/ramate-io/cite",
+	ref_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+	cur_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+	path = "README.md",
+	reason = r"
+### Testing git source
+
+With some markdown, here's a link [to the git source](https://github.com/ramate-io/cite/blob/94dab273cf6c2abe8742d6d459ad45c96ca9b694/README.md#L1)."
+)]
+#[cite(
+	mock,
+	same = "test content",
+	reason = "Testing basic citation functionality",
+	reason = "test reason"
+)]
+pub fn test_git_source() {
+	println!("This function has a citation with a git source");
+}
+
 #[cfg(test)]
 pub mod tests {
 	use cite::cite;
@@ -61,17 +85,40 @@ pub mod tests {
 		println!("This function has a citation with an http source");
 	}
 
-	// Test the git source
+	/// Test the git source with citation footnote
 	#[cite(
 		git,
 		remote = "https://github.com/ramate-io/cite",
 		ref_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
 		cur_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
 		path = "README.md",
-		reason = "Testing git source"
+		reason = "Testing git source with new formatting"
 	)]
-	fn test_git_source() {
+	pub fn test_git_source() {
 		println!("This function has a citation with a git source");
+	}
+
+	/// Test citation with warning level
+	#[cite(
+		mock,
+		same = "test content",
+		level = "WARN",
+		reason = "This citation will emit warnings on content mismatch"
+	)]
+	pub fn test_warning_citation() {
+		println!("This function has a citation that will warn");
+	}
+
+	/// Test HTTP source with citation footnote
+	#[cite(http, url = "https://example.com", pattern = "title", reason = "Testing HTTP source")]
+	fn test_http_source_with_footnote() {
+		println!("This function has a citation with an HTTP source");
+	}
+
+	/// Test mock source with citation footnote
+	#[cite(mock, same = "test content", reason = "Testing mock source")]
+	fn test_mock_source_with_footnote() {
+		println!("This function has a citation with a mock source");
 	}
 
 	#[test]
@@ -83,6 +130,8 @@ pub mod tests {
 
 		// Test that cited http source works normally
 		test_http_source();
+		test_http_source_with_footnote();
+		test_mock_source_with_footnote();
 
 		// Test that cited git source works normally
 		test_git_source();
