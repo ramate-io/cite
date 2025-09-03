@@ -141,6 +141,7 @@ mod documentation;
 mod extraction;
 mod level;
 mod prevalidation;
+mod sources;
 mod validation;
 
 /// Mock source parsing and construction
@@ -154,7 +155,7 @@ mod validation;
 /// - `mock, changed = ("old", "new")`: Content that has changed from old to new
 ///
 /// Additional behavior parameters are handled by the main citation parser.
-mod mock;
+use sources::mock;
 
 /// HTTP/Http source parsing and construction
 ///
@@ -168,9 +169,9 @@ mod mock;
 /// - `http, url = "https://example.com", match_type = "full"`: Full document validation
 ///
 /// Additional behavior parameters are handled by the main citation parser.
-mod http;
+use sources::http;
 
-mod git;
+use sources::git;
 
 /// The main `#[cite]` attribute macro
 ///
