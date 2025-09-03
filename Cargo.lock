@@ -268,6 +268,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cite-helper-macro-git-test"
+version = "0.0.1"
+dependencies = [
+ "cite",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "trybuild",
+]
+
+[[package]]
 name = "cite-http"
 version = "0.0.1"
 dependencies = [

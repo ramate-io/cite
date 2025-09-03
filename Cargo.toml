@@ -14,7 +14,8 @@ members = [
   "tests/silent",
   "tests/warn",
   "tests/annotationless",
-  "tests/lenient"
+  "tests/lenient",
+  "tests/helper-macro-git"
   
 ]
 
