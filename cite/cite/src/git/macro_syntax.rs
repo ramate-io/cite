@@ -84,95 +84,115 @@ use syn::{Expr, Lit};
 /// - `git, remote = "https://github.com/ramate-io/cite", referenced_revision = "94dab273cf6c2abe8742d6d459ad45c96ca9b694", current_revision = "main", path = "src/**/*.rs"`
 pub fn try_parse_from_citation_args(args: &[Expr]) -> Option<GitSource> {
 	// Look for pattern: git, remote = "...", referenced_revision = "...", current_revision = "...", path = "..."
+	// OR: source = "git", remote = "...", referenced_revision = "...", current_revision = "...", path = "..."
 	if args.is_empty() {
 		return None;
 	}
 
-	// First argument should be the identifier "git"
-	if let Expr::Path(path_expr) = &args[0] {
+	// Check if this is the old syntax (first argument is "git") or new syntax (has "source = "git"")
+	let is_git_source = if let Expr::Path(path_expr) = &args[0] {
 		let segment = &path_expr.path.segments[0];
-		if path_expr.path.segments.len() == 1 && segment.ident == "git" {
-			// Look through remaining arguments for assignments
-			let mut remote = None;
-			let mut referenced_revision = None;
-			let mut current_revision = None;
-			let mut path = None;
-			let mut optional_name = None;
+		path_expr.path.segments.len() == 1 && segment.ident == "git"
+	} else {
+		false
+	};
 
-			for arg in &args[1..] {
-				if let Expr::Assign(assign_expr) = arg {
-					if let Expr::Path(left_path) = &*assign_expr.left {
-						if left_path.path.segments.len() == 1 {
-							let name = &left_path.path.segments[0].ident.to_string();
-
-							match name.as_str() {
-								"remote" => {
-									if let Some(remote_str) =
-										extract_string_literal(&assign_expr.right)
-									{
-										remote = Some(remote_str);
-									}
-								}
-								"referenced_revision" | "ref_rev" => {
-									if let Some(revision_str) =
-										extract_string_literal(&assign_expr.right)
-									{
-										referenced_revision = Some(revision_str);
-									}
-								}
-								"current_revision" | "cur_rev" => {
-									if let Some(revision_str) =
-										extract_string_literal(&assign_expr.right)
-									{
-										current_revision = Some(revision_str);
-									}
-								}
-								"path" => {
-									if let Some(path_str) =
-										extract_string_literal(&assign_expr.right)
-									{
-										path = Some(path_str);
-									}
-								}
-								"name" => {
-									if let Some(name_str) =
-										extract_string_literal(&assign_expr.right)
-									{
-										optional_name = Some(name_str);
-									}
-								}
-								_ => continue, // Unknown parameter, skip
-							}
+	let has_source_git = args.iter().any(|arg| {
+		if let Expr::Assign(assign_expr) = arg {
+			if let Expr::Path(left_path) = &*assign_expr.left {
+				if left_path.path.segments.len() == 1 && left_path.path.segments[0].ident == "source" {
+					if let Expr::Lit(lit_expr) = &*assign_expr.right {
+						if let syn::Lit::Str(str_lit) = &lit_expr.lit {
+							return str_lit.value() == "git";
 						}
 					}
 				}
 			}
+		}
+		false
+	});
 
-			// Construct GitSource if we have required parameters
-			if let (
-				Some(remote_str),
-				Some(referenced_revision_str),
-				Some(current_revision_str),
-				Some(path_str),
-			) = (remote, referenced_revision, current_revision, path)
-			{
-				// Use the constructor for macro usage - let it handle validation
-				return GitSource::try_new(
-					&remote_str,
-					&path_str,
-					&referenced_revision_str,
-					&current_revision_str,
-					optional_name,
-				)
-				.ok();
+	if !is_git_source && !has_source_git {
+		return None;
+	}
+
+	// Look through arguments for assignments
+	let mut remote = None;
+	let mut referenced_revision = None;
+	let mut current_revision = None;
+	let mut path = None;
+	let mut optional_name = None;
+
+	for arg in args {
+		if let Expr::Assign(assign_expr) = arg {
+			if let Expr::Path(left_path) = &*assign_expr.left {
+				if left_path.path.segments.len() == 1 {
+					let name = &left_path.path.segments[0].ident.to_string();
+
+					match name.as_str() {
+						"remote" => {
+							if let Some(remote_str) =
+								extract_string_literal(&assign_expr.right)
+							{
+								remote = Some(remote_str);
+							}
+						}
+						"referenced_revision" | "ref_rev" => {
+							if let Some(revision_str) =
+								extract_string_literal(&assign_expr.right)
+							{
+								referenced_revision = Some(revision_str);
+							}
+						}
+						"current_revision" | "cur_rev" => {
+							if let Some(revision_str) =
+								extract_string_literal(&assign_expr.right)
+							{
+								current_revision = Some(revision_str);
+							}
+						}
+						"path" => {
+							if let Some(path_str) =
+								extract_string_literal(&assign_expr.right)
+							{
+								path = Some(path_str);
+							}
+						}
+						"name" => {
+							if let Some(name_str) =
+								extract_string_literal(&assign_expr.right)
+							{
+								optional_name = Some(name_str);
+							}
+						}
+						_ => continue, // Unknown parameter, skip
+					}
+				}
 			}
-
-			// If we got this far but don't have required params, return None
-			// This allows the main parser to show the proper error message
-			return None;
 		}
 	}
 
+	// Construct GitSource if we have required parameters
+	if let (
+		Some(remote_str),
+		Some(referenced_revision_str),
+		Some(current_revision_str),
+		Some(path_str),
+	) = (remote, referenced_revision, current_revision, path)
+	{
+		// Use the constructor for macro usage - let it handle validation
+		return GitSource::try_new(
+			&remote_str,
+			&path_str,
+			&referenced_revision_str,
+			&current_revision_str,
+			optional_name,
+		)
+		.ok();
+	}
+
+	// If we got this far but don't have required params, return None
+	// This allows the main parser to show the proper error message
 	None
 }
 

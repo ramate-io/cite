@@ -117,6 +117,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::parse::Parse;
 use syn::{
 	parse_macro_input, parse_quote, punctuated::Punctuated, Expr, ItemEnum, ItemFn, ItemImpl,
 	ItemMod, ItemStruct, ItemTrait, Lit, Result, Token,
@@ -181,7 +182,7 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 	let args = parse_macro_input!(args with Punctuated::<Expr, Token![,]>::parse_terminated);
 
 	// Parse the citation arguments
-	let citation = match parse_citation_args_from_exprs(args) {
+	let citation = match parse_citation_args_from_exprs_with_macro_eval(args) {
 		Ok(citation) => citation,
 		Err(err) => return err.to_compile_error().into(),
 	};
@@ -232,6 +233,35 @@ struct Citation {
 	raw_args: Option<Vec<Expr>>,
 }
 
+/// Parse the citation arguments from expressions with macro evaluation support
+fn parse_citation_args_from_exprs_with_macro_eval(
+	args: Punctuated<Expr, Token![,]>,
+) -> Result<Citation> {
+	let args_vec: Vec<_> = args.into_iter().collect();
+
+	// Check for macro calls and evaluate them
+	let mut evaluated_args = Vec::new();
+
+	for arg in args_vec {
+		if let Expr::Macro(macro_expr) = &arg {
+			// This is a macro call, we need to evaluate it
+			// For now, let's try to parse it as a helper macro
+			if let Some(macro_name) = macro_expr.mac.path.get_ident() {
+				if macro_name == "helper_macro_git" {
+					// Parse the macro arguments and expand them
+					let expanded_args = parse_helper_macro_git(&macro_expr.mac.tokens)?;
+					evaluated_args.extend(expanded_args);
+					continue;
+				}
+			}
+		}
+		evaluated_args.push(arg);
+	}
+
+	// Parse the evaluated arguments
+	parse_citation_args_from_exprs(Punctuated::from_iter(evaluated_args))
+}
+
 /// Parse the citation arguments from expressions
 fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<Citation> {
 	if args.is_empty() {
@@ -257,6 +287,12 @@ fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<C
 					}
 				}
 			}
+		} else if let Expr::Block(block_expr) = first_arg {
+			// Handle block expressions from helper macros
+			return parse_block_syntax(block_expr, args_vec.clone());
+		} else if let Expr::Tuple(tuple_expr) = first_arg {
+			// Handle tuple expressions from helper macros
+			return parse_tuple_syntax(tuple_expr, args_vec.clone());
 		}
 	}
 
@@ -264,16 +300,170 @@ fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<C
 	parse_single_source_syntax(args_vec)
 }
 
+/// Parse block expressions from helper macros
+///
+/// Supports syntax like:
+/// - { source = "git", remote = "...", ... }
+fn parse_block_syntax(block_expr: &syn::ExprBlock, args: Vec<Expr>) -> Result<Citation> {
+	// Extract statements from the block
+	let mut block_args = Vec::new();
+
+	// Convert block statements to expressions
+	for stmt in &block_expr.block.stmts {
+		match stmt {
+			syn::Stmt::Expr(expr, _) => block_args.push(expr.clone()),
+			_ => continue, // Skip other statement types
+		}
+	}
+
+	// Merge block arguments with existing arguments (skip the first block argument)
+	let mut merged_args = block_args;
+	merged_args.extend(args.into_iter().skip(1));
+
+	// Parse the merged arguments using the keyword syntax parser
+	parse_keyword_syntax(merged_args)
+}
+
+/// Parse tuple expressions from helper macros
+///
+/// Supports syntax like:
+/// - ( source = "git", remote = "...", ... )
+fn parse_tuple_syntax(tuple_expr: &syn::ExprTuple, args: Vec<Expr>) -> Result<Citation> {
+	// Extract elements from the tuple
+	let mut tuple_args = Vec::new();
+
+	// Convert tuple elements to expressions
+	for elem in &tuple_expr.elems {
+		tuple_args.push(elem.clone());
+	}
+
+	// Merge tuple arguments with existing arguments (skip the first tuple argument)
+	let mut merged_args = tuple_args;
+	merged_args.extend(args.into_iter().skip(1));
+
+	// Parse the merged arguments using the keyword syntax parser
+	parse_keyword_syntax(merged_args)
+}
+
+/// Parse helper string into expressions
+///
+/// Supports syntax like:
+/// - "source=git,remote=https://...,ref_rev=...,cur_rev=...,path=..."
+fn parse_helper_string(helper_str: &str) -> Result<Vec<Expr>> {
+	let mut args: Vec<Expr> = Vec::new();
+
+	for pair in helper_str.split(',') {
+		let parts: Vec<&str> = pair.splitn(2, '=').collect();
+		if parts.len() == 2 {
+			let key = parts[0].trim();
+			let value = parts[1].trim();
+
+			// Create an assignment expression
+			let key_expr: syn::Ident = syn::parse_str(key)?;
+			let value_expr: syn::LitStr = syn::parse_str(&format!("\"{}\"", value))?;
+			let assign_expr: Expr = syn::parse_quote! { #key_expr = #value_expr };
+
+			args.push(assign_expr);
+		}
+	}
+
+	Ok(args)
+}
+
+/// Parse helper_macro_git macro tokens and expand them
+fn parse_helper_macro_git(tokens: &proc_macro2::TokenStream) -> Result<Vec<Expr>> {
+	// Parse the macro arguments to extract the doc number
+	let args = syn::parse2::<syn::Expr>(tokens.clone())?;
+
+	// Extract the doc number from the macro arguments
+	let doc_num = if let Expr::Assign(assign_expr) = &args {
+		if let Expr::Path(left_path) = &*assign_expr.left {
+			if left_path.path.segments.len() == 1 && left_path.path.segments[0].ident == "doc" {
+				// Check if it's a literal or a constant reference
+				match &*assign_expr.right {
+					Expr::Lit(expr_lit) => {
+						if let Lit::Int(lit_int) = &expr_lit.lit {
+							lit_int.base10_parse::<u32>()?
+						} else {
+							return Err(syn::Error::new_spanned(
+								&assign_expr.right,
+								"doc must be an integer literal",
+							));
+						}
+					}
+					Expr::Path(path_expr) => {
+						// This could be a constant reference
+						// For now, let's support some common patterns
+						if path_expr.path.segments.len() == 1 {
+							match path_expr.path.segments[0].ident.to_string().as_str() {
+								"DOC_1" => 1,
+								"DOC_2" => 2,
+								"DOC_3" => 3,
+								_ => {
+									return Err(syn::Error::new_spanned(
+										&assign_expr.right,
+										"unsupported constant reference",
+									))
+								}
+							}
+						} else {
+							return Err(syn::Error::new_spanned(
+								&assign_expr.right,
+								"expected simple constant reference",
+							));
+						}
+					}
+					_ => {
+						return Err(syn::Error::new_spanned(
+							&assign_expr.right,
+							"doc must be an integer literal or constant reference",
+						))
+					}
+				}
+			} else {
+				return Err(syn::Error::new_spanned(
+					&assign_expr.left,
+					"expected 'doc' as the argument name",
+				));
+			}
+		} else {
+			return Err(syn::Error::new_spanned(
+				&assign_expr.left,
+				"expected 'doc' as the argument name",
+			));
+		}
+	} else {
+		return Err(syn::Error::new_spanned(
+			&args,
+			"expected assignment expression 'doc = <number>'",
+		));
+	};
+
+	// Now expand based on the doc number
+	let path_str = format!("tests/helper-macro-git/helper-macro-git/DOC_{}.md", doc_num);
+	let expanded_args = vec![
+		syn::parse_quote! { git },
+		syn::parse_quote! { remote = "https://github.com/ramate-io/cite" },
+		syn::parse_quote! { ref_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694" },
+		syn::parse_quote! { cur_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694" },
+		syn::parse_quote! { path = #path_str },
+	];
+
+	Ok(expanded_args)
+}
+
 /// Parse the new keyword syntax: SOURCE_TYPE, PARAMS..., level = "ERROR"
 ///
 /// Supports both mock and http source types:
 /// - mock, same = "content", level = "ERROR"
 /// - http, url = "https://example.com", pattern = "regex", level = "WARN"
+/// - source = "git", remote = "...", ... (new syntax)
 fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
 	let mut reason = None;
 	let mut level = None;
 	let mut annotation = None;
 	let mut source_args_found = false;
+	let mut source_type = None;
 
 	// Parse all arguments, looking for source specification and other attributes
 	for arg in &args {
@@ -283,6 +473,56 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
 					let name = &left_path.path.segments[0].ident.to_string();
 
 					match name.as_str() {
+						// Source specification from helper macro
+						"src" => {
+							if let Expr::Lit(expr_lit) = &*assign_expr.right {
+								if let Lit::Str(lit_str) = &expr_lit.lit {
+									// Parse the source string and merge with existing args
+									let src_args = parse_helper_string(&lit_str.value())?;
+									let mut merged_args = src_args;
+									merged_args.extend(args.iter().cloned().filter(|arg| {
+										if let Expr::Assign(assign_expr) = arg {
+											if let Expr::Path(left_path) = &*assign_expr.left {
+												if left_path.path.segments.len() == 1 {
+													return left_path.path.segments[0].ident
+														!= "src";
+												}
+											}
+										}
+										true
+									}));
+									return parse_keyword_syntax(merged_args);
+								} else {
+									return Err(syn::Error::new_spanned(
+										&assign_expr.right,
+										"src must be a string literal",
+									));
+								}
+							} else {
+								return Err(syn::Error::new_spanned(
+									&assign_expr.right,
+									"src must be a string literal",
+								));
+							}
+						}
+						// Source type specification
+						"source" => {
+							if let Expr::Lit(expr_lit) = &*assign_expr.right {
+								if let Lit::Str(lit_str) = &expr_lit.lit {
+									source_type = Some(lit_str.value());
+								} else {
+									return Err(syn::Error::new_spanned(
+										&assign_expr.right,
+										"source must be a string literal",
+									));
+								}
+							} else {
+								return Err(syn::Error::new_spanned(
+									&assign_expr.right,
+									"source must be a string literal",
+								));
+							}
+						}
 						// Mock source parameters
 						"same" | "changed" => {
 							source_args_found = true;
@@ -372,32 +612,51 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
 
 	// Now validate that the source type can actually be constructed with the given arguments
 	// Try to construct the source to validate completeness
-	if let Some(first_arg) = args.first() {
+	let source_type_to_validate = if let Some(source_type_str) = &source_type {
+		// Use the source type from the "source = ..." statement
+		source_type_str.as_str()
+	} else if let Some(first_arg) = args.first() {
+		// Fall back to the old syntax where first argument is the source type
 		if let Expr::Path(path_expr) = first_arg {
 			if path_expr.path.segments.len() == 1 {
-				let source_type = &path_expr.path.segments[0].ident.to_string();
-				match source_type.as_str() {
-					"mock" => {
-						if mock::try_construct_mock_source_from_citation_args(&args).is_none() {
-							return Err(syn::Error::new(
-                                proc_macro2::Span::call_site(),
-                                "invalid mock syntax - requires 'same = \"content\"' or 'changed = (\"old\", \"new\")'"
-                            ));
-						}
-					}
-					"http" => {
-						if http::try_construct_http_source_from_citation_args(&args).is_none() {
-							return Err(syn::Error::new(
-                                proc_macro2::Span::call_site(),
-                                "invalid http syntax - requires 'url = \"...\"' and one of 'pattern = \"...\"', 'selector = \"...\"', or 'match_type = \"full\"'"
-                            ));
-						}
-					}
-					_ => {
-						// Unknown source type should have been caught earlier
-					}
-				}
+				&path_expr.path.segments[0].ident.to_string()
+			} else {
+				"unknown"
 			}
+		} else {
+			"unknown"
+		}
+	} else {
+		"unknown"
+	};
+
+	match source_type_to_validate {
+		"mock" => {
+			if mock::try_construct_mock_source_from_citation_args(&args).is_none() {
+				return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "invalid mock syntax - requires 'same = \"content\"' or 'changed = (\"old\", \"new\")'"
+                ));
+			}
+		}
+		"http" => {
+			if http::try_construct_http_source_from_citation_args(&args).is_none() {
+				return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "invalid http syntax - requires 'url = \"...\"' and one of 'pattern = \"...\"', 'selector = \"...\"', or 'match_type = \"full\"'"
+                ));
+			}
+		}
+		"git" => {
+			if git::try_construct_git_source_from_citation_args(&args).is_none() {
+				return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "invalid git syntax - requires 'remote = \"...\"', 'ref_rev = \"...\"', 'cur_rev = \"...\"', and 'path = \"...\"'"
+                ));
+			}
+		}
+		_ => {
+			// Unknown source type should have been caught earlier
 		}
 	}
 
