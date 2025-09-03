@@ -25,7 +25,7 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 	});
 
 	let doc_comment = format!(
-		"<cite above>\n{}\n</cite above>",
+		"<div style=\"display: none;\"><cite above>\n{}\n</cite above></div>",
 		serde_json::to_string_pretty(&json_data).unwrap()
 	);
 

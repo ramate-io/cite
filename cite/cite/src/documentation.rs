@@ -26,7 +26,7 @@ pub fn add_citation_footnote_to_item(
 	));
 
 	// Remove any existing doc comments that might have contained <cite above> blocks
-	attrs.retain(|attr| !attr.path().is_ident("doc"));
+	// attrs.retain(|attr| !attr.path().is_ident("doc"));
 
 	// Create a new doc comment attribute
 	let doc_attr = syn::parse_quote! {

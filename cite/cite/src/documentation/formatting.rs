@@ -25,7 +25,7 @@ pub fn generate_global_citation_formatting() -> String {
 	let mut global_formatting = String::new();
 
 	// Add citation badge linking to the cite repo
-	global_formatting.push_str("## References\n\n");
+	global_formatting.push_str("\n\n## References\n\n");
 	global_formatting.push_str(
 		"\n\n<div style=\"background-color:#E6E6FA; border-left:4px solid #9370DB; padding:8px; font-weight:bold;\">\
 	Cited with <a href=\"https://github.com/ramate-io/cite\">cite</a>.\
