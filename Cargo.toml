@@ -5,6 +5,9 @@ resolver = "2"
 members = [
 
   "cite/*",
+
+  "examples/helper-macro-git",
+
   "tests/dependencies",
   "tests/no-std",
   "tests/no-std-bin",
@@ -85,6 +88,8 @@ cite-http = { path = "cite/http" }
 cite-git = { path = "cite/git" }
 cite-macro = { path = "cite/macro" }
 cite = { path = "cite/cite" }
+
+helper-macro-git = { path = "examples/helper-macro-git" }
 
 [workspace.lints.clippy]
 debug_assert_with_mut_call = "deny"

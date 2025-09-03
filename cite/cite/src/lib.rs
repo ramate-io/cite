@@ -200,7 +200,7 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 
 	// If source is "above", parse the doc comment and replace it
 	if kwargs.get("src").map(|s| s.as_str()) == Some("above") {
-		match parse_above_into_kwargs(&item) {
+		match parse_above_into_kwargs(&mut item) {
 			Ok(doc_kwargs) => {
 				// Replace the "above" source with the actual source from doc comment
 				if let Some(actual_src) = doc_kwargs.get("src") {
@@ -1558,22 +1558,25 @@ fn execute_git_source_validation(
 	}
 }
 
-/// Parse doc comment into key-value map
-fn parse_above_into_kwargs(item: &syn::Item) -> Result<std::collections::HashMap<String, String>> {
+/// Parse doc comment into key-value map and remove the cite above content
+fn parse_above_into_kwargs(
+	item: &mut syn::Item,
+) -> Result<std::collections::HashMap<String, String>> {
 	// Look for doc comments in the item's attributes
 	let attrs = match item {
-		syn::Item::Fn(item_fn) => &item_fn.attrs,
-		syn::Item::Struct(item_struct) => &item_struct.attrs,
-		syn::Item::Enum(item_enum) => &item_enum.attrs,
-		syn::Item::Trait(item_trait) => &item_trait.attrs,
-		syn::Item::Impl(item_impl) => &item_impl.attrs,
-		syn::Item::Mod(item_mod) => &item_mod.attrs,
+		syn::Item::Fn(item_fn) => &mut item_fn.attrs,
+		syn::Item::Struct(item_struct) => &mut item_struct.attrs,
+		syn::Item::Enum(item_enum) => &mut item_enum.attrs,
+		syn::Item::Trait(item_trait) => &mut item_trait.attrs,
+		syn::Item::Impl(item_impl) => &mut item_impl.attrs,
+		syn::Item::Mod(item_mod) => &mut item_mod.attrs,
 		_ => return Err(syn::Error::new(
 			proc_macro2::Span::call_site(),
 			"cite above can only be used on functions, structs, enums, traits, impl blocks, or modules",
 		)),
 	};
 
+	// Find the doc attribute that contains <cite above> and extract content
 	for attr in attrs {
 		if attr.path().is_ident("doc") {
 			if let syn::Meta::NameValue(meta_name_value) = &attr.meta {
@@ -1585,6 +1588,9 @@ fn parse_above_into_kwargs(item: &syn::Item) -> Result<std::collections::HashMap
 						{
 							// Extract the content between the tags
 							if let Some(cite_content) = extract_cite_content(&doc_content) {
+								// Remove the <cite above> content from the doc comment
+								remove_cite_above_from_doc_comment(attr, &doc_content);
+
 								// Parse the JSON content
 								return parse_json_content_to_kwargs(&cite_content);
 							}
@@ -1601,7 +1607,7 @@ fn parse_above_into_kwargs(item: &syn::Item) -> Result<std::collections::HashMap
 	))
 }
 
-/// Extract content between <cite above> and </cite above> tags
+/// Extract content between <cite above> and </cite above> tags and remove the tags and content
 fn extract_cite_content(doc_content: &str) -> Option<String> {
 	let start_tag = "<cite above>";
 	let end_tag = "</cite above>";
@@ -1615,6 +1621,43 @@ fn extract_cite_content(doc_content: &str) -> Option<String> {
 		}
 	}
 	None
+}
+
+/// Remove the <cite above> content from a doc comment while keeping the rest
+fn remove_cite_above_from_doc_comment(attr: &mut syn::Attribute, doc_content: &str) {
+	let start_tag = "<cite above>";
+	let end_tag = "</cite above>";
+
+	if let Some(start_pos) = doc_content.find(start_tag) {
+		if let Some(end_pos) = doc_content.find(end_tag) {
+			// Create new doc content without the <cite above> section
+			let before_cite = doc_content[..start_pos].trim();
+			let after_cite = doc_content[end_pos + end_tag.len()..].trim();
+
+			let new_doc_content = if before_cite.is_empty() && after_cite.is_empty() {
+				"".to_string()
+			} else if before_cite.is_empty() {
+				after_cite.to_string()
+			} else if after_cite.is_empty() {
+				before_cite.to_string()
+			} else {
+				format!("{}\n\n{}", before_cite, after_cite)
+			};
+
+			// Update the attribute with the new content
+			if let syn::Meta::NameValue(meta_name_value) = &mut attr.meta {
+				if let syn::Expr::Lit(expr_lit) = &mut meta_name_value.value {
+					if let syn::Lit::Str(_) = &mut expr_lit.lit {
+						// Create a new LitStr with the updated content
+						expr_lit.lit = syn::Lit::Str(syn::LitStr::new(
+							&new_doc_content,
+							proc_macro2::Span::call_site(),
+						));
+					}
+				}
+			}
+		}
+	}
 }
 
 /// Parse JSON content into key-value map
