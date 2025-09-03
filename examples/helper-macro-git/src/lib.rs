@@ -26,7 +26,7 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 
 	// this syntax allows this to (1) be escaped, (2) be invisible to cargo doc, and (3) be invisible to rust analyzer
 	let doc_comment = format!(
-		"<div style=\"display: none;\"><div <cite above content [{}] end_content/>/></div>",
+		"<div style=\"display: none;\"><cite above content [{}] end_content/></div>",
 		serde_json::to_string_pretty(&json_data).unwrap()
 	);
 
