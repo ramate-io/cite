@@ -19,8 +19,8 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 	let json_data = serde_json::json!({
 		"src": "git",
 		"remote": "https://github.com/ramate-io/cite",
-		"ref_rev": "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
-		"cur_rev": "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+		"ref_rev": "83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
+		"cur_rev": "83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
 		"path": format!("examples/helper-macro-git/DOC_{}.md", doc_num)
 	});
 

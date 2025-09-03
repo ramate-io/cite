@@ -10,7 +10,7 @@ publish = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-cite = { workspace = true, features = ["warn"] }
+cite = { workspace = true }
 helper-macro-git = { workspace = true }
 
 [dev-dependencies]
