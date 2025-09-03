@@ -14,7 +14,7 @@ pub fn execute_kwargs_source_validation(
 			// Construct GitSource from kwargs using the utility function
 			match sources::git::try_get_git_source_from_kwargs(kwargs) {
 				Ok(git_source) => {
-					return execute_git_source_validation(git_source, behavior, level_override)
+					return execute_git_source_validation(git_source, behavior, level_override);
 				}
 				Err(e) => return Some(Err(e)),
 			}

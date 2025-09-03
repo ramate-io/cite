@@ -21,7 +21,7 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 		"remote": "https://github.com/ramate-io/cite",
 		"ref_rev": "83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
 		"cur_rev": "83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
-		"path": format!("examples/helper-macro-git/DOC_{}.md", doc_num)
+		"path": format!("tests/helper-macro-git/helper-macro-git/DOC_{}.md", doc_num)
 	});
 
 	// this syntax allows this to (1) be escaped, (2) be invisible to cargo doc, and (3) be invisible to rust analyzer
