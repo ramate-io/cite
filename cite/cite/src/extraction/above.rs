@@ -1,4 +1,4 @@
-use syn::{Expr, Lit, Result};
+use syn::Result;
 
 /// Parse doc comment into key-value map and remove the cite above content
 pub fn parse_above_into_kwargs(

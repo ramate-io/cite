@@ -1,5 +1,5 @@
-use proc_macro::TokenStream;
-use syn::{parse_macro_input, punctuated::Punctuated, Expr, Lit, Result, Token};
+use quote::ToTokens;
+use syn::{Expr, Lit};
 
 pub mod above;
 
