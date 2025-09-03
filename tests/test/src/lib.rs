@@ -9,6 +9,12 @@ use cite::cite;
 	path = "README.md",
 	reason = "Testing git source"
 )]
+#[cite(
+	mock,
+	same = "test content",
+	reason = "Testing basic citation functionality",
+	reason = "test reason"
+)]
 pub fn test_git_source() {
 	println!("This function has a citation with a git source");
 }
