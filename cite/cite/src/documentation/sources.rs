@@ -1,40 +1,29 @@
 use crate::Citation;
 
 /// Generate source reference with hyperlink where applicable
-pub fn generate_source_reference(citation: &Citation) -> String {
+pub fn generate_source_reference(citation: &Citation) -> Result<String, String> {
 	// Try to extract source information from the citation
-	if let Some(args) = &citation.raw_args {
-		if !args.is_empty() {
-			// Check if this is a git source
-			if let Some(first_arg) = args.first() {
-				if let syn::Expr::Path(path_expr) = first_arg {
-					if path_expr.path.segments.len() == 1
-						&& path_expr.path.segments[0].ident == "git"
-					{
-						// Try to construct the GitSource and use its link method
-						if let Some(git_source) =
-							crate::git::try_construct_git_source_from_citation_args(args)
-						{
-							return generate_git_source_reference(&git_source);
-						}
-						// Fallback to manual parsing if construction fails
-						return generate_git_source_reference_from_args_fallback(args);
-					} else if path_expr.path.segments.len() == 1
-						&& path_expr.path.segments[0].ident == "http"
-					{
-						return generate_http_source_reference(args);
-					} else if path_expr.path.segments.len() == 1
-						&& path_expr.path.segments[0].ident == "mock"
-					{
-						return generate_mock_source_reference(args);
-					}
-				}
-			}
+
+	match citation.get_src()?.as_str() {
+		"git" => {
+			try_construct_git_source_kwargs(citation.kwargs.as_ref())?;
+
+			return Ok(generate_git_source_reference(citation));
+		}
+		"http" => {
+			try_construct_http_source_kwargs(citation.kwargs.as_ref())?;
+
+			return Ok(generate_http_source_reference(citation));
+		}
+		"mock" => {
+			try_construct_mock_source_kwargs(citation.kwargs.as_ref())?;
+
+			return Ok(generate_mock_source_reference(citation));
+		}
+		_ => {
+			return Err("Unknown source".to_string());
 		}
 	}
-
-	// Fallback for unknown source types
-	"Unknown source".to_string()
 }
 
 /// Generate git source reference with hyperlink from macro arguments (fallback)

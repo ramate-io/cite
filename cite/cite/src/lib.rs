@@ -285,6 +285,17 @@ struct Citation {
 	kwargs: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
+impl Citation {
+	pub fn get_src(&self) -> Result<String, String> {
+		if let Some(kwargs) = &self.kwargs {
+			if let Some(src) = kwargs.get("src") {
+				return Ok(src.as_str().ok_or("src must be a string")?.to_string());
+			}
+		}
+		Err("src not found".to_string())
+	}
+}
+
 /// Handle citation on a function
 fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_macro2::TokenStream {
 	// Generate validation code that runs at compile time
