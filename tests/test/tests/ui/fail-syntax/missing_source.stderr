@@ -1,4 +1,4 @@
-error: cite attribute requires a source expression
+error: cite attribute requires a source type
  --> tests/ui/fail-syntax/missing_source.rs:5:1
   |
 5 | #[cite()]  // This should fail - no source provided

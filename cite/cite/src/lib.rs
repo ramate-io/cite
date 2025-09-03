@@ -216,7 +216,7 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 	}
 
 	// Validate and create citation
-	let citation = match prevalidation::validate_with_kwargs(&kwargs) {
+	let citation = match prevalidation::validate_with_kwargs(&kwargs, &args_vec) {
 		Ok(citation) => citation,
 		Err(err) => return err.to_compile_error().into(),
 	};

@@ -1,3 +1,4 @@
+use crate::sources;
 use cite_core::{CitationBehavior, CitationLevel};
 
 /// Execute kwargs source validation and return the result
@@ -32,29 +33,48 @@ pub fn execute_kwargs_source_validation(
 			// Construct HttpMatch from kwargs
 			let url = kwargs.get("url").and_then(|v| v.as_str())?;
 
-			// For now, just validate that we can construct it
-			// In the future, we might want to actually execute HTTP validation
-			let _http_source = cite_http::HttpMatch::try_new_for_macro(url, None, None).ok()?;
+			// Parse optional parameters
+			let pattern = kwargs.get("pattern").and_then(|v| v.as_str());
+			let selector = kwargs.get("selector").and_then(|v| v.as_str());
+			let match_type = kwargs.get("match_type").and_then(|v| v.as_str());
+			let fragment = kwargs.get("fragment").and_then(|v| v.as_str());
 
-			// Return success for now
-			return Some(Ok(None));
-		}
-		"mock" => {
-			// Construct MockSource from kwargs
-			let same = kwargs.get("same").and_then(|v| v.as_str());
-			let changed = kwargs.get("changed");
-
-			let mock_source = if let Some(content) = same {
-				cite_core::mock::MockSource::same(content.to_string())
-			} else if changed.is_some() {
-				// For changed, we'd need to parse the tuple structure
-				// For now, return None to indicate we can't handle this yet
-				return None;
+			// Determine the match expression based on parameters
+			let match_expression = if let Some(mt) = match_type {
+				match mt {
+					"full" => Some(cite_http::MatchExpression::full_document()),
+					"auto" => None, // Let auto-detection work
+					_ => return Some(Err(format!("unknown match_type: {}", mt))),
+				}
+			} else if let Some(pat) = pattern {
+				Some(cite_http::MatchExpression::regex(pat))
+			} else if let Some(sel) = selector {
+				Some(cite_http::MatchExpression::css_selector(sel))
+			} else if let Some(frag) = fragment {
+				Some(cite_http::MatchExpression::fragment(frag))
 			} else {
-				return None;
+				None // Let auto-detection work
 			};
 
-			return execute_mock_source_validation(mock_source, behavior, level_override);
+			// Construct the HttpMatch with the appropriate parameters
+			let http_source = cite_http::HttpMatch::try_new_for_macro(
+				url,
+				match_expression,
+				None, // No cache override for now
+			)
+			.ok()?;
+
+			// Execute HTTP validation
+			return execute_http_source_validation(http_source, behavior, level_override);
+		}
+		"mock" => {
+			// Construct MockSource from kwargs using the utility function
+			match sources::mock::try_get_mock_source_from_kwargs(kwargs) {
+				Ok(mock_source) => {
+					return execute_mock_source_validation(mock_source, behavior, level_override)
+				}
+				Err(e) => return Some(Err(e)),
+			}
 		}
 		_ => {
 			// Unknown source type
@@ -108,6 +128,48 @@ fn execute_mock_source_validation(
 			Some(Ok(None))
 		}
 		Err(e) => Some(Err(format!("Citation source error: {:?}", e))),
+	}
+}
+
+/// Execute HTTP source validation and return the result
+fn execute_http_source_validation(
+	http_source: cite_http::HttpMatch,
+	behavior: &CitationBehavior,
+	level_override: Option<CitationLevel>,
+) -> Option<std::result::Result<Option<String>, String>> {
+	use cite_core::Source;
+
+	// HTTP sources now handle caching internally
+	match http_source.get() {
+		Ok(comparison) => {
+			let result = comparison.validate(behavior, level_override);
+
+			if !result.is_valid() {
+				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
+					format!(
+						"HTTP citation content has changed!\n         URL: {}\n{}",
+						comparison.current().source_url.as_str(),
+						unified_diff
+					)
+				} else {
+					format!(
+                        "HTTP citation content has changed!\n         URL: {}\n         Current: {}\n         Referenced: {}",
+                        comparison.current().source_url.as_str(),
+                        comparison.current().content,
+                        comparison.referenced().content
+                    )
+				};
+
+				if result.should_fail_compilation() {
+					return Some(Err(diff_msg));
+				} else if result.should_report() {
+					return Some(Ok(Some(diff_msg)));
+				}
+			}
+
+			Some(Ok(None))
+		}
+		Err(e) => Some(Err(format!("HTTP citation source error: {:?}", e))),
 	}
 }
 
