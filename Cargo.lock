@@ -185,32 +185,21 @@ dependencies = [
 name = "cite"
 version = "0.0.1"
 dependencies = [
- "anyhow",
- "chrono",
  "cite-cache",
  "cite-core",
  "cite-git",
  "cite-http",
  "proc-macro2",
  "quote",
- "regex",
- "reqwest",
- "scraper",
- "serde",
- "serde_json",
- "similar",
  "syn",
  "tempfile",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "cite-annotationless-test"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "cite",
- "thiserror 1.0.69",
  "trybuild",
 ]
 
@@ -222,7 +211,6 @@ dependencies = [
  "cargo_metadata",
  "cite-core",
  "serde",
- "serde_json",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -231,7 +219,6 @@ dependencies = [
 name = "cite-core"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "serde",
  "tempfile",
  "thiserror 1.0.69",
@@ -263,7 +250,6 @@ dependencies = [
  "cargo_metadata",
  "cite",
  "embedded-hal",
- "nb",
  "serde_json",
 ]
 
@@ -272,17 +258,12 @@ name = "cite-git"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "cargo_metadata",
  "chrono",
- "cite-cache",
  "cite-core",
  "git2",
  "glob",
- "pathdiff",
  "regex",
  "serde",
- "serde_json",
- "similar",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -292,7 +273,6 @@ name = "cite-http"
 version = "0.0.1"
 dependencies = [
  "anyhow",
- "cargo_metadata",
  "chrono",
  "cite-cache",
  "cite-core",
@@ -303,16 +283,13 @@ dependencies = [
  "serde_json",
  "similar",
  "tempfile",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "cite-lenient-test"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "cite",
- "thiserror 1.0.69",
  "trybuild",
 ]
 
@@ -338,9 +315,7 @@ dependencies = [
 name = "cite-silent-test"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "cite",
- "thiserror 1.0.69",
  "trybuild",
 ]
 
@@ -348,10 +323,8 @@ dependencies = [
 name = "cite-test"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "cite",
  "cite-core",
- "thiserror 1.0.69",
  "trybuild",
 ]
 
@@ -359,9 +332,7 @@ dependencies = [
 name = "cite-warn-test"
 version = "0.0.1"
 dependencies = [
- "anyhow",
  "cite",
- "thiserror 1.0.69",
  "trybuild",
 ]
 
@@ -1139,12 +1110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nb"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
-
-[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1240,12 +1205,6 @@ dependencies = [
  "smallvec",
  "windows-targets 0.52.6",
 ]
-
-[[package]]
-name = "pathdiff"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
 name = "percent-encoding"

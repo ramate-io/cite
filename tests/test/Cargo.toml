@@ -10,8 +10,6 @@ publish = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-anyhow = { workspace = true }
-thiserror = { workspace = true }
 cite-core = { workspace = true }
 cite = { workspace = true }
 
