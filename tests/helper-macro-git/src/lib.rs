@@ -45,10 +45,18 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 	// Parse the input item
 	let mut item = parse_macro_input!(input as syn::Item);
 
-	// Add the doc comment with the cite above content
+	// Add the doc comment with the cite above content as JSON
+	let json_data = serde_json::json!({
+		"src": "git",
+		"remote": "https://github.com/ramate-io/cite",
+		"ref_rev": "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+		"cur_rev": "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+		"path": format!("tests/helper-macro-git/helper-macro-git/DOC_{}.md", doc_num)
+	});
+
 	let doc_comment = format!(
-		"<cite above>\nremote = https://github.com/ramate-io/cite,\nref_rev = 94dab273cf6c2abe8742d6d459ad45c96ca9b694,\ncur_rev = 94dab273cf6c2abe8742d6d459ad45c96ca9b694,\npath = tests/helper-macro-git/helper-macro-git/DOC_{}.md\n</cite above>",
-		doc_num
+		"<cite above>\n{}\n</cite above>",
+		serde_json::to_string_pretty(&json_data).unwrap()
 	);
 
 	// Add the doc attribute to the item

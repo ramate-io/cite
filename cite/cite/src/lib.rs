@@ -200,17 +200,27 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 
 	// If source is "above", parse the doc comment and replace it
 	if kwargs.get("src").map(|s| s.as_str()) == Some("above") {
-		if let Some(doc_kwargs) = parse_above_into_kwargs(&item) {
-			// Replace the "above" source with the actual source from doc comment
-			if let Some(actual_src) = doc_kwargs.get("src") {
-				kwargs.insert("src".to_string(), actual_src.clone());
-			}
-			// Merge all other doc kwargs
-			for (key, value) in doc_kwargs {
-				if key != "src" {
-					kwargs.insert(key, value);
+		match parse_above_into_kwargs(&item) {
+			Ok(doc_kwargs) => {
+				// Replace the "above" source with the actual source from doc comment
+				if let Some(actual_src) = doc_kwargs.get("src") {
+					kwargs.insert("src".to_string(), actual_src.clone());
+				} else {
+					return syn::Error::new(
+						proc_macro2::Span::call_site(),
+						"<cite above> block must contain a 'src' field",
+					)
+					.to_compile_error()
+					.into();
+				}
+				// Merge all other doc kwargs
+				for (key, value) in doc_kwargs {
+					if key != "src" {
+						kwargs.insert(key, value);
+					}
 				}
 			}
+			Err(err) => return err.to_compile_error().into(),
 		}
 	}
 
@@ -269,6 +279,8 @@ struct Citation {
 	annotation: Option<String>,
 	// For keyword syntax, store the raw arguments
 	raw_args: Option<Vec<Expr>>,
+	// For kwargs syntax, store the parsed kwargs
+	kwargs: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Parse the citation arguments from expressions
@@ -452,7 +464,7 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
 	// This allows us to pass the keyword arguments to the validation phase
 	let source_expr = syn::parse_quote! { keyword_syntax };
 
-	Ok(Citation { source_expr, reason, level, annotation, raw_args: Some(args) })
+	Ok(Citation { source_expr, reason, level, annotation, raw_args: Some(args), kwargs: None })
 }
 
 /// Parse the traditional single source expression syntax
@@ -558,7 +570,14 @@ fn parse_single_source_syntax(args: Vec<Expr>) -> Result<Citation> {
 		syn::Error::new(proc_macro2::Span::call_site(), "Missing source expression")
 	})?;
 
-	Ok(Citation { source_expr, reason, level, annotation, raw_args: Some(args_clone) })
+	Ok(Citation {
+		source_expr,
+		reason,
+		level,
+		annotation,
+		raw_args: Some(args_clone),
+		kwargs: None,
+	})
 }
 
 /// Handle citation on a function
@@ -1343,6 +1362,16 @@ fn try_execute_source_expression(
 	behavior: &cite_core::CitationBehavior,
 	level_override: Option<cite_core::CitationLevel>,
 ) -> Option<std::result::Result<Option<String>, String>> {
+	// Check if this uses kwargs syntax by looking for the unit expression
+	if let Expr::Tuple(tuple_expr) = &citation.source_expr {
+		if tuple_expr.elems.is_empty() {
+			// This is a unit expression, check if we have kwargs
+			if citation.kwargs.is_some() {
+				return execute_kwargs_source_validation(citation, behavior, level_override);
+			}
+		}
+	}
+
 	// Check if this uses keyword syntax by looking for the keyword_syntax marker
 	if let Expr::Path(path_expr) = &citation.source_expr {
 		if path_expr.path.segments.len() == 1
@@ -1397,6 +1426,17 @@ fn try_execute_source_expression(
 
 	// Add support for other source types here as needed
 	None
+}
+
+/// Execute kwargs source validation and return the result
+fn execute_kwargs_source_validation(
+	_citation: &Citation,
+	_behavior: &cite_core::CitationBehavior,
+	_level_override: Option<cite_core::CitationLevel>,
+) -> Option<std::result::Result<Option<String>, String>> {
+	// The kwargs have already been validated in validate_with_kwargs
+	// Just return success
+	Some(Ok(None))
 }
 
 /// Execute mock source validation and return the result
@@ -1519,7 +1559,7 @@ fn execute_git_source_validation(
 }
 
 /// Parse doc comment into key-value map
-fn parse_above_into_kwargs(item: &syn::Item) -> Option<std::collections::HashMap<String, String>> {
+fn parse_above_into_kwargs(item: &syn::Item) -> Result<std::collections::HashMap<String, String>> {
 	// Look for doc comments in the item's attributes
 	let attrs = match item {
 		syn::Item::Fn(item_fn) => &item_fn.attrs,
@@ -1528,7 +1568,10 @@ fn parse_above_into_kwargs(item: &syn::Item) -> Option<std::collections::HashMap
 		syn::Item::Trait(item_trait) => &item_trait.attrs,
 		syn::Item::Impl(item_impl) => &item_impl.attrs,
 		syn::Item::Mod(item_mod) => &item_mod.attrs,
-		_ => return None,
+		_ => return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"cite above can only be used on functions, structs, enums, traits, impl blocks, or modules",
+		)),
 	};
 
 	for attr in attrs {
@@ -1542,8 +1585,8 @@ fn parse_above_into_kwargs(item: &syn::Item) -> Option<std::collections::HashMap
 						{
 							// Extract the content between the tags
 							if let Some(cite_content) = extract_cite_content(&doc_content) {
-								// Parse the key-value pairs
-								return Some(parse_cite_content_to_kwargs(&cite_content));
+								// Parse the JSON content
+								return parse_json_content_to_kwargs(&cite_content);
 							}
 						}
 					}
@@ -1551,7 +1594,11 @@ fn parse_above_into_kwargs(item: &syn::Item) -> Option<std::collections::HashMap
 			}
 		}
 	}
-	None
+
+	Err(syn::Error::new(
+		proc_macro2::Span::call_site(),
+		"no <cite above> block found in doc comments",
+	))
 }
 
 /// Extract content between <cite above> and </cite above> tags
@@ -1570,29 +1617,48 @@ fn extract_cite_content(doc_content: &str) -> Option<String> {
 	None
 }
 
-/// Parse cite content into key-value map
-fn parse_cite_content_to_kwargs(cite_content: &str) -> std::collections::HashMap<String, String> {
+/// Parse JSON content into key-value map
+fn parse_json_content_to_kwargs(
+	cite_content: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+	// Parse the JSON content
+	let json_value: serde_json::Value = serde_json::from_str(cite_content).map_err(|e| {
+		syn::Error::new(
+			proc_macro2::Span::call_site(),
+			format!("invalid JSON in <cite above> block: {}", e),
+		)
+	})?;
+
+	// Convert JSON object to HashMap<String, String>
 	let mut kwargs = std::collections::HashMap::new();
 
-	for line in cite_content.lines() {
-		let line = line.trim();
-		if line.is_empty() || line.starts_with(',') {
-			continue;
+	if let serde_json::Value::Object(obj) = json_value {
+		for (key, value) in obj {
+			if let serde_json::Value::String(s) = value {
+				kwargs.insert(key, s);
+			} else {
+				return Err(syn::Error::new(
+					proc_macro2::Span::call_site(),
+					format!("all values in <cite above> JSON must be strings, found: {:?}", value),
+				));
+			}
 		}
-
-		// Parse key = value pairs
-		if let Some(equals_pos) = line.find('=') {
-			let key = line[..equals_pos].trim();
-			let value = line[equals_pos + 1..].trim().trim_matches(',').trim_matches('"');
-			kwargs.insert(key.to_string(), value.to_string());
-		} else if !line.contains('=') {
-			// This might be a bare identifier (like "git")
-			let bare_value = line.trim_matches(',');
-			kwargs.insert("src".to_string(), bare_value.to_string());
-		}
+	} else {
+		return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"<cite above> JSON must be an object",
+		));
 	}
 
-	kwargs
+	// Ensure src field is present
+	if !kwargs.contains_key("src") {
+		return Err(syn::Error::new(
+			proc_macro2::Span::call_site(),
+			"<cite above> JSON must contain a 'src' field",
+		));
+	}
+
+	Ok(kwargs)
 }
 
 /// Parse cite arguments into key-value map
@@ -1623,47 +1689,43 @@ fn validate_with_kwargs(kwargs: &std::collections::HashMap<String, String>) -> R
 	let level = kwargs.get("level").cloned();
 	let annotation = kwargs.get("annotation").cloned();
 
-	// Create a source expression based on the source type
-	let source_expr = match src.as_str() {
+	// Validate source-specific parameters
+	match src.as_str() {
 		"git" => {
 			// Validate git source parameters
-			let remote = kwargs.get("remote").ok_or_else(|| {
+			kwargs.get("remote").ok_or_else(|| {
 				syn::Error::new(
 					proc_macro2::Span::call_site(),
 					"git source requires 'remote = \"...\"'",
 				)
 			})?;
-			let ref_rev = kwargs.get("ref_rev").ok_or_else(|| {
+			kwargs.get("ref_rev").ok_or_else(|| {
 				syn::Error::new(
 					proc_macro2::Span::call_site(),
 					"git source requires 'ref_rev = \"...\"'",
 				)
 			})?;
-			let cur_rev = kwargs.get("cur_rev").ok_or_else(|| {
+			kwargs.get("cur_rev").ok_or_else(|| {
 				syn::Error::new(
 					proc_macro2::Span::call_site(),
 					"git source requires 'cur_rev = \"...\"'",
 				)
 			})?;
-			let path = kwargs.get("path").ok_or_else(|| {
+			kwargs.get("path").ok_or_else(|| {
 				syn::Error::new(
 					proc_macro2::Span::call_site(),
 					"git source requires 'path = \"...\"'",
 				)
 			})?;
-
-			syn::parse_quote! { git }
 		}
 		"http" => {
 			// Validate http source parameters
-			let url = kwargs.get("url").ok_or_else(|| {
+			kwargs.get("url").ok_or_else(|| {
 				syn::Error::new(
 					proc_macro2::Span::call_site(),
 					"http source requires 'url = \"...\"'",
 				)
 			})?;
-
-			syn::parse_quote! { http }
 		}
 		"mock" => {
 			// Validate mock source parameters
@@ -1675,8 +1737,6 @@ fn validate_with_kwargs(kwargs: &std::collections::HashMap<String, String>) -> R
 					"mock source requires 'same = \"...\"' or 'changed = (\"old\", \"new\")'",
 				));
 			}
-
-			syn::parse_quote! { mock }
 		}
 		_ => {
 			return Err(syn::Error::new(
@@ -1684,7 +1744,17 @@ fn validate_with_kwargs(kwargs: &std::collections::HashMap<String, String>) -> R
 				format!("unknown source type: {}", src),
 			));
 		}
-	};
+	}
 
-	Ok(Citation { source_expr, reason, level, annotation, raw_args: None })
+	// Create a simple source expression - just a unit tuple
+	let source_expr = syn::parse_quote! { () };
+
+	Ok(Citation {
+		source_expr,
+		reason,
+		level,
+		annotation,
+		raw_args: None,
+		kwargs: Some(kwargs.clone()),
+	})
 }

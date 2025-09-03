@@ -191,6 +191,7 @@ dependencies = [
  "cite-http",
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn",
  "tempfile",
 ]
@@ -274,6 +275,7 @@ dependencies = [
  "cite",
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn",
  "trybuild",
 ]
