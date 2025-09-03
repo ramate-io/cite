@@ -37,18 +37,3 @@
 //!
 //! This separation allows the parsing logic to focus on syntax while delegating
 //! the actual Git source creation to the git library.
-
-use cite_git::GitSource;
-use syn::Expr;
-
-pub mod macro_syntax;
-
-/// Try to construct a GitSource from citation arguments using keyword syntax
-///
-/// Supports syntax like:
-/// - `git, revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "README.md"`
-/// - `git, revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "src/lib.rs#L1-L10"`
-/// - `git, revision = "74aa653664cd90adcc5f836f1777f265c109045b", path = "src/**/*.rs"`
-pub fn try_construct_git_source_from_citation_args(args: &[Expr]) -> Option<GitSource> {
-	macro_syntax::try_parse_from_citation_args(args)
-}

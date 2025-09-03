@@ -37,18 +37,3 @@
 //!
 //! This separation allows the parsing logic to focus on syntax while delegating
 //! the actual HTTP source creation to the http library.
-
-use syn::Expr;
-use cite_http::HttpMatch;
-
-mod macro_syntax;
-
-/// Try to construct a HttpMatch from citation arguments using keyword syntax
-/// 
-/// Supports syntax like:
-/// - `http, url = "https://example.com", pattern = "regex"`
-/// - `http, url = "https://example.com", selector = "h1"`  
-/// - `http, url = "https://example.com", match_type = "full"`
-pub fn try_construct_http_source_from_citation_args(args: &[Expr]) -> Option<HttpMatch> {
-    macro_syntax::try_parse_from_citation_args(args)
-}

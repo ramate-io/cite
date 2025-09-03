@@ -9,11 +9,8 @@ pub fn generate_citation_footnote(
 	let mut footnote = String::new();
 
 	// Use provided link text or generate fallback
-	let source_ref = if let Some(link) = link_text {
-		link
-	} else {
-		super::sources::generate_source_reference(citation)
-	};
+	let source_ref =
+		if let Some(link) = link_text { link } else { "[Citation source]".to_string() };
 
 	// Add annotation and level modifiers
 	let mut modifiers = Vec::new();

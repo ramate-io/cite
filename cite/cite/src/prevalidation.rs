@@ -1,17 +1,16 @@
 use syn::Result;
 
 /// Validate kwargs and create citation
-pub fn validate_with_kwargs(kwargs: &std::collections::HashMap<String, serde_json::Value>) -> Result<crate::Citation> {
+pub fn validate_with_kwargs(
+	kwargs: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<crate::Citation> {
 	let src = kwargs.get("src").ok_or_else(|| {
 		syn::Error::new(proc_macro2::Span::call_site(), "cite attribute requires a source type")
 	})?;
 
 	let src_str = match src {
 		serde_json::Value::String(s) => s,
-		_ => return Err(syn::Error::new(
-			proc_macro2::Span::call_site(),
-			"src must be a string",
-		)),
+		_ => return Err(syn::Error::new(proc_macro2::Span::call_site(), "src must be a string")),
 	};
 
 	let reason = kwargs.get("reason").and_then(|v| v.as_str()).map(|s| s.to_string());
@@ -78,12 +77,5 @@ pub fn validate_with_kwargs(kwargs: &std::collections::HashMap<String, serde_jso
 	// Create a simple source expression - just a unit tuple
 	let source_expr = syn::parse_quote! { () };
 
-	Ok(crate::Citation {
-		source_expr,
-		reason,
-		level,
-		annotation,
-		raw_args: None,
-		kwargs: Some(kwargs.clone()),
-	})
+	Ok(crate::Citation { source_expr, reason, level, annotation, kwargs: Some(kwargs.clone()) })
 }

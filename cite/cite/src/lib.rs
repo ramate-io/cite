@@ -155,23 +155,6 @@ mod validation;
 /// - `mock, changed = ("old", "new")`: Content that has changed from old to new
 ///
 /// Additional behavior parameters are handled by the main citation parser.
-use sources::mock;
-
-/// HTTP/Http source parsing and construction
-///
-/// This module handles the parsing of HTTP source syntax and construction of
-/// HttpMatch instances during macro expansion. It implements the keyword
-/// argument parsing for HTTP sources.
-///
-/// The HTTP source syntax supports:
-/// - `http, url = "https://example.com", pattern = "regex"`: Regex content extraction
-/// - `http, url = "https://example.com", selector = "h1"`: CSS selector extraction  
-/// - `http, url = "https://example.com", match_type = "full"`: Full document validation
-///
-/// Additional behavior parameters are handled by the main citation parser.
-use sources::http;
-
-use sources::git;
 
 /// The main `#[cite]` attribute macro
 ///
@@ -280,8 +263,7 @@ struct Citation {
 	reason: Option<String>,
 	level: Option<String>,
 	annotation: Option<String>,
-	// For keyword syntax, store the raw arguments
-	raw_args: Option<Vec<Expr>>,
+
 	// For kwargs syntax, store the parsed kwargs
 	kwargs: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
@@ -300,7 +282,7 @@ impl Citation {
 /// Handle citation on a function
 fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_macro2::TokenStream {
 	// Generate validation code that runs at compile time
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 
 	// Insert the validation as a const block at the beginning of the function
 	let validation_stmt: syn::Stmt = parse_quote! {
@@ -310,12 +292,7 @@ fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_mac
 	item_fn.block.stmts.insert(0, validation_stmt);
 
 	// Add citation footnote to doc comments
-	documentation::add_citation_footnote_to_item(
-		&mut item_fn.attrs,
-		&citation,
-		link_text,
-		warning_text,
-	);
+	documentation::add_citation_footnote_to_item(&mut item_fn.attrs, &citation, warning_text);
 
 	quote! { #item_fn }
 }
@@ -325,19 +302,14 @@ fn handle_struct_citation(
 	citation: Citation,
 	mut item_struct: ItemStruct,
 ) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	documentation::add_citation_footnote_to_item(
-		&mut item_struct.attrs,
-		&citation,
-		link_text,
-		warning_text,
-	);
+	documentation::add_citation_footnote_to_item(&mut item_struct.attrs, &citation, warning_text);
 
 	quote! {
 		#item_struct
@@ -351,19 +323,14 @@ fn handle_trait_citation(
 	citation: Citation,
 	mut item_trait: ItemTrait,
 ) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	documentation::add_citation_footnote_to_item(
-		&mut item_trait.attrs,
-		&citation,
-		link_text,
-		warning_text,
-	);
+	documentation::add_citation_footnote_to_item(&mut item_trait.attrs, &citation, warning_text);
 
 	quote! {
 		#item_trait
@@ -374,7 +341,7 @@ fn handle_trait_citation(
 
 /// Handle citation on an impl block
 fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 
 	// Use counter for unique const name
 	let validation_const_name = syn::Ident::new(
@@ -383,12 +350,7 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-	documentation::add_citation_footnote_to_item(
-		&mut item_impl.attrs,
-		&citation,
-		link_text,
-		warning_text,
-	);
+	documentation::add_citation_footnote_to_item(&mut item_impl.attrs, &citation, warning_text);
 
 	quote! {
 		#item_impl
@@ -399,19 +361,14 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 
 /// Handle citation on a module
 fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	documentation::add_citation_footnote_to_item(
-		&mut item_mod.attrs,
-		&citation,
-		link_text,
-		warning_text,
-	);
+	documentation::add_citation_footnote_to_item(&mut item_mod.attrs, &citation, warning_text);
 
 	quote! {
 		#item_mod
@@ -422,7 +379,7 @@ fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2
 
 /// Handle citation on an enum
 fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
@@ -430,12 +387,7 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-	documentation::add_citation_footnote_to_item(
-		&mut item_enum.attrs,
-		&citation,
-		link_text,
-		warning_text,
-	);
+	documentation::add_citation_footnote_to_item(&mut item_enum.attrs, &citation, warning_text);
 
 	quote! {
 		#item_enum
@@ -445,12 +397,8 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 }
 
 /// Generate validation code that executes the user's source expression with the real API
-/// Returns (link_text, warning_text, validation_code)
-fn generate_validation_code(
-	citation: &Citation,
-) -> (Option<String>, String, proc_macro2::TokenStream) {
-	// Try to construct the source first
-	let link_text = documentation::sources::construct_source_from_citation(citation);
+/// Returns (warning_text, validation_code)
+fn generate_validation_code(citation: &Citation) -> (String, proc_macro2::TokenStream) {
 	let source_expr = &citation.source_expr;
 
 	let reason_comment = if let Some(_reason) = &citation.reason {
@@ -553,7 +501,7 @@ fn generate_validation_code(
 		}
 	};
 
-	(link_text, warning_text, validation_code)
+	(warning_text, validation_code)
 }
 
 /// Attempt to perform validation during macro expansion

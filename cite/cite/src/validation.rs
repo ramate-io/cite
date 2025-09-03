@@ -2,13 +2,65 @@ use cite_core::{CitationBehavior, CitationLevel};
 
 /// Execute kwargs source validation and return the result
 pub fn execute_kwargs_source_validation(
-	_citation: &crate::Citation,
-	_behavior: &CitationBehavior,
-	_level_override: Option<CitationLevel>,
+	citation: &crate::Citation,
+	behavior: &CitationBehavior,
+	level_override: Option<CitationLevel>,
 ) -> Option<std::result::Result<Option<String>, String>> {
-	// The kwargs have already been validated in prevalidation
-	// Just return success
-	Some(Ok(None))
+	let kwargs = citation.kwargs.as_ref()?;
+
+	match citation.get_src().ok()?.as_str() {
+		"git" => {
+			// Construct GitSource from kwargs
+			let remote = kwargs.get("remote").and_then(|v| v.as_str())?;
+			let ref_rev = kwargs.get("ref_rev").and_then(|v| v.as_str())?;
+			let cur_rev = kwargs.get("cur_rev").and_then(|v| v.as_str())?;
+			let path = kwargs.get("path").and_then(|v| v.as_str())?;
+			let name = kwargs.get("name").and_then(|v| v.as_str());
+
+			let git_source = cite_git::GitSource::try_new(
+				remote,
+				path,
+				ref_rev,
+				cur_rev,
+				name.map(|s| s.to_string()),
+			)
+			.ok()?;
+
+			return execute_git_source_validation(git_source, behavior, level_override);
+		}
+		"http" => {
+			// Construct HttpMatch from kwargs
+			let url = kwargs.get("url").and_then(|v| v.as_str())?;
+
+			// For now, just validate that we can construct it
+			// In the future, we might want to actually execute HTTP validation
+			let _http_source = cite_http::HttpMatch::try_new_for_macro(url, None, None).ok()?;
+
+			// Return success for now
+			return Some(Ok(None));
+		}
+		"mock" => {
+			// Construct MockSource from kwargs
+			let same = kwargs.get("same").and_then(|v| v.as_str());
+			let changed = kwargs.get("changed");
+
+			let mock_source = if let Some(content) = same {
+				cite_core::mock::MockSource::same(content.to_string())
+			} else if changed.is_some() {
+				// For changed, we'd need to parse the tuple structure
+				// For now, return None to indicate we can't handle this yet
+				return None;
+			} else {
+				return None;
+			};
+
+			return execute_mock_source_validation(mock_source, behavior, level_override);
+		}
+		_ => {
+			// Unknown source type
+			return None;
+		}
+	}
 }
 
 /// Try to execute source expressions that we can handle during macro expansion
@@ -17,80 +69,12 @@ pub fn try_execute_source_expression(
 	behavior: &CitationBehavior,
 	level_override: Option<CitationLevel>,
 ) -> Option<std::result::Result<Option<String>, String>> {
-	// Check if this uses kwargs syntax by looking for the unit expression
-	if let syn::Expr::Tuple(tuple_expr) = &citation.source_expr {
-		if tuple_expr.elems.is_empty() {
-			// This is a unit expression, check if we have kwargs
-			if citation.kwargs.is_some() {
-				return execute_kwargs_source_validation(citation, behavior, level_override);
-			}
-		}
+	// All citations now use kwargs syntax
+	if citation.kwargs.is_some() {
+		return execute_kwargs_source_validation(citation, behavior, level_override);
 	}
 
-	// Check if this uses keyword syntax by looking for the keyword_syntax marker
-	if let syn::Expr::Path(path_expr) = &citation.source_expr {
-		if path_expr.path.segments.len() == 1
-			&& path_expr.path.segments[0].ident == "keyword_syntax"
-		{
-			// Use keyword syntax parsing - try all source types
-			if let Some(args) = &citation.raw_args {
-				// Try mock sources first
-				if let Some(mock_source) =
-					crate::mock::try_construct_mock_source_from_citation_args(args)
-				{
-					return execute_mock_source_validation(mock_source, behavior, level_override);
-				}
-
-				// Try HTTP sources
-				if let Some(http_source) =
-					crate::http::try_construct_http_source_from_citation_args(args)
-				{
-					return execute_http_source_validation(http_source, behavior, level_override);
-				}
-
-				// Try Git sources
-				if let Some(git_source) =
-					crate::git::try_construct_git_source_from_citation_args(args)
-				{
-					return execute_git_source_validation(git_source, behavior, level_override);
-				}
-			}
-		}
-	}
-
-	// Check if this uses the new syntax where the source type is the first argument
-	if let Some(args) = &citation.raw_args {
-		if !args.is_empty() {
-			// Try Git sources first (since git is the most common)
-			if let Some(git_source) = crate::git::try_construct_git_source_from_citation_args(args)
-			{
-				return execute_git_source_validation(git_source, behavior, level_override);
-			}
-
-			// Try HTTP sources
-			if let Some(http_source) =
-				crate::http::try_construct_http_source_from_citation_args(args)
-			{
-				return execute_http_source_validation(http_source, behavior, level_override);
-			}
-
-			// Try mock sources
-			if let Some(mock_source) =
-				crate::mock::try_construct_mock_source_from_citation_args(args)
-			{
-				return execute_mock_source_validation(mock_source, behavior, level_override);
-			}
-		}
-	}
-
-	// Try to construct and execute MockSource using the traditional expression parsing
-	if let Some(mock_source) =
-		crate::mock::try_construct_mock_source_from_expr(&citation.source_expr)
-	{
-		return execute_mock_source_validation(mock_source, behavior, level_override);
-	}
-
-	// Add support for other source types here as needed
+	// Fallback for any remaining direct expression parsing
 	None
 }
 
@@ -124,48 +108,6 @@ fn execute_mock_source_validation(
 			Some(Ok(None))
 		}
 		Err(e) => Some(Err(format!("Citation source error: {:?}", e))),
-	}
-}
-
-/// Execute HTTP source validation and return the result
-fn execute_http_source_validation(
-	http_source: cite_http::HttpMatch,
-	behavior: &CitationBehavior,
-	level_override: Option<CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// HTTP sources now handle caching internally
-	match http_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
-					format!(
-						"HTTP citation content has changed!\n         URL: {}\n{}",
-						comparison.current().source_url.as_str(),
-						unified_diff
-					)
-				} else {
-					format!(
-                        "HTTP citation content has changed!\n         URL: {}\n         Current: {}\n         Referenced: {}",
-                        comparison.current().source_url.as_str(),
-                        comparison.current().content,
-                        comparison.referenced().content
-                    )
-				};
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("HTTP citation source error: {:?}", e))),
 	}
 }
 
