@@ -653,7 +653,7 @@ fn generate_citation_footnote(citation: &Citation) -> String {
 	footnote.push_str("## References\n\n");
 	footnote.push_str(
 		"\n\n<div style=\"background-color:#E6E6FA; border-left:4px solid #9370DB; padding:8px; font-weight:bold;\">\
-	Cited with <a href=\"https://github.com/ramate-io/cite\">cite</a>\
+	Cited with <a href=\"https://github.com/ramate-io/cite\">cite</a>.\
 	</div>\n\n"
 	);
 
@@ -663,14 +663,14 @@ fn generate_citation_footnote(citation: &Citation) -> String {
 		cite_core::CitationGlobal::Strict => {
 			footnote.push_str(
 				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
-	This code uses strict citation validation\
+	This code uses strict citation validation.\
 	</div>\n\n",
 			);
 		}
 		cite_core::CitationGlobal::Lenient => {
 			footnote.push_str(
 				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
-	This code uses lenient citation validation\
+	This code uses lenient citation validation.\
 	</div>\n\n",
 			);
 		}

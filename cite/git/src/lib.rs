@@ -9,6 +9,7 @@ use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
+use std::fmt::Display;
 
 
 /// Error types for git operations
@@ -47,6 +48,12 @@ pub struct PathPattern {
 	pub path: String,
 	pub line_range: Option<LineRange>,
 	pub glob: Option<String>,
+}
+
+impl Display for PathPattern {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.path)
+	}
 }
 
 impl PathPattern {
@@ -108,13 +115,15 @@ pub struct GitSource {
 	pub referenced_revision: String,
 	/// The current revision to compare against (commit hash, branch, tag)
 	pub current_revision: String,
+	/// The optional name of the source
+	pub name: String,
 	/// Repository builder for handling remote repository operations
 	#[serde(skip)]
 	repository_builder: RepositoryBuilder,
 }
 
 impl GitSource {
-	pub fn try_new(remote: &str, path: &str, referenced_revision: &str, current_revision: &str) -> Result<Self, GitSourceError> {
+	pub fn try_new(remote: &str, path: &str, referenced_revision: &str, current_revision: &str, name: Option<String>) -> Result<Self, GitSourceError> {
 		// Basic validation
 		if remote.is_empty() {
 			return Err(GitSourceError::InvalidRemote("Remote URL cannot be empty".into()));
@@ -128,6 +137,8 @@ impl GitSource {
 		
 		// Parse the path into a PathPattern
 		let path_pattern = PathPattern::try_new(path)?;
+
+		let name = name.as_deref().unwrap_or(&format!("{}/{}@{}", remote, path_pattern, referenced_revision)).to_string();
 		
 		let id = Id::new(format!("git_{}_{}_{}_{}", remote, path, referenced_revision, current_revision));
 		Ok(Self {
@@ -136,6 +147,7 @@ impl GitSource {
 			path_pattern,
 			referenced_revision: referenced_revision.to_string(),
 			current_revision: current_revision.to_string(),
+			name,
 			repository_builder: RepositoryBuilder::new(remote.to_string()),
 		})
 	}
@@ -144,6 +156,11 @@ impl GitSource {
 impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	fn id(&self) -> &Id {
 		&self.id
+	}
+
+	fn name(&self) -> &str {
+		// use either the provided name or a reasonable string representation of the remote, reference, and path
+		&self.name
 	}
 
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
@@ -442,7 +459,8 @@ mod tests {
 			"https://github.com/ramate-io/cite",
 			"README.md",
 			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
-			"main"
+			"main",
+			None
 		)?;
 
 		assert_eq!(source.remote, "https://github.com/ramate-io/cite");
@@ -460,7 +478,8 @@ mod tests {
 			"https://github.com/ramate-io/cite",
 			"README.md#L1-L5",
 			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
-			"main"
+			"main",
+			None
 		)?;
 
 		let referenced_content = source.get_referenced()?;
@@ -594,10 +613,10 @@ mod tests {
 
 	#[test]
 	fn test_git_source_id_generation() -> Result<(), anyhow::Error> {
-		let source1 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
-		let source2 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
-		let source3 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "b156c85e9734b8628a7d1b8d03cbd99205b99ff9")?;
-		let source4 = GitSource::try_new("https://github.com/ramate-io/cite", "src/lib.rs", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
+		let source1 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
+		let source2 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
+		let source3 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "b156c85e9734b8628a7d1b8d03cbd99205b99ff9", None)?;
+		let source4 = GitSource::try_new("https://github.com/ramate-io/cite", "src/lib.rs", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
 
 		// Same remote, path, and revision should generate same ID
 		assert_eq!(source1.id, source2.id);
@@ -614,11 +633,11 @@ mod tests {
 		// This test requires a git repository with the specified commit
 		// We'll use the commit mentioned in the user's requirements
 		// Try to create a git source for README.md with line range
-		let source = GitSource::try_new("https://github.com/ramate-io/cite", "README.md#L1-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
+		let source = GitSource::try_new("https://github.com/ramate-io/cite", "README.md#L1-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
 		let content = source.get_referenced()?;
 
 		// Create another content with a different line range
-		let source2 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md#L10-L15", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
+		let source2 = GitSource::try_new("https://github.com/ramate-io/cite", "README.md#L10-L15", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
 		let _content2 = source2.get_referenced()?;
 
 		// The diff should work (even if there are no changes, it should not panic)
@@ -635,11 +654,11 @@ mod tests {
 		// Test that line range filtering works correctly
 
 		// Create content with full file (no line range)
-		let source_full = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
+		let source_full = GitSource::try_new("https://github.com/ramate-io/cite", "README.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
 		let content_full = source_full.get_referenced()?;
 
 		// Create content with limited line range
-		let source_limited = GitSource::try_new("https://github.com/ramate-io/cite", "README.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main")?;
+		let source_limited = GitSource::try_new("https://github.com/ramate-io/cite", "README.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "main", None)?;
 		let content_limited = source_limited.get_referenced()?;
 
 		// Both should work without panicking
@@ -658,47 +677,47 @@ mod tests {
 
 		// Test 1: Lines 1-3 (covering the beginning)
 		let source_1_3 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_1_3 = source_1_3.get_referenced()?;
 
 		// Test 2: Lines 5-10 (covering the middle to end)
 		let source_5_10 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-5-10.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-5-10.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_5_10 = source_5_10.get_referenced()?;
 
 		// Test 3: Lines 4-6 (intersecting with both ranges)
 		let source_4_6 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L4-L6", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L4-L6", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_4_6 = source_4_6.get_referenced()?;
 
 		// Test 4: Lines 8-12 (partially intersecting, extending beyond file)
 		let source_8_12 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L8-L12", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L8-L12", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_8_12 = source_8_12.get_referenced()?;
 
 		// Test 5: Lines 11-15 (not intersecting with file content)
 		let source_11_15 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L11-L15", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L11-L15", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_11_15 = source_11_15.get_referenced()?;
 
 		// Test 6: Single line (line 5)
 		let source_line_5 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_line_5 = source_line_5.get_referenced()?;
 
 		// Test 7: Full file (no line range)
 		let source_full =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let _content_full = source_full.get_referenced()?;
 
 		// Test 8: File with no changes
 		let source_no_diff =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/no-diffed.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/no-diffed.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_no_diff = source_no_diff.get_referenced()?;
 
 		// Test 9: File that will be deleted
 		let source_to_delete =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/to-delete.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/to-delete.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_to_delete = source_to_delete.get_referenced()?;
 
 		// Run diffs to test line intersection logic
@@ -722,27 +741,27 @@ mod tests {
 		// Test edge cases for line range filtering with real files
 		// Test 1: Line range exactly matching file boundaries
 		let source_exact =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_exact = source_exact.get_referenced()?;
 
 		// Test 2: Line range starting at 1, ending before file end
 		let source_start_1 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_start_1 = source_start_1.get_referenced()?;
 
 		// Test 3: Line range starting after file start, ending at file end
 		let source_end_file =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_end_file = source_end_file.get_referenced()?;
 
 		// Test 4: Line range completely outside file (after)
 		let source_after =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L15-L20", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L15-L20", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_after = source_after.get_referenced()?;
 
 		// Test 5: Single line at file boundary
 		let source_boundary =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let content_boundary = source_boundary.get_referenced()?;
 
 		// Run diffs to test edge case handling
@@ -763,19 +782,19 @@ mod tests {
 
 		// Create different line range sources
 		let source_1_3 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L1-L3", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let comparison_1_3 = source_1_3.get()?;
         assert!(comparison_1_3.diff().has_changes());
         assert_eq!(comparison_1_3.diff().diff(), "-Alpha\n-Bravo\n-Charlie\n+Aaron\n+Bear\n+Cat\n");
 
         let source_5_10 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-5-10.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-5-10.md#L5-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
         let comparison_5_10 = source_5_10.get()?;
         assert!(comparison_5_10.diff().has_changes());
         assert_eq!(comparison_5_10.diff().diff(), "-Echo\n-Foxtrot\n-Gamma\n-Halifax\n-Istanbul\n-Juniper>\n\\ No newline at end of file\n+Epsom\n+Fox\n+Golf\n+Hotel\n+India\n+Juliet<\n\\ No newline at end of file\n");
 
 		let source_full =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/no-diffed.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/no-diffed.md", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let comparison_full = source_full.get()?;
         assert!(!comparison_full.diff().has_changes());
 
@@ -787,7 +806,7 @@ mod tests {
 		// Test that diff content is actually filtered by line ranges
 
 		let source_intersects_1_3 =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L3-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L3-L5", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let comparison_intersects_1_3 = source_intersects_1_3.get()?;
         assert!(comparison_intersects_1_3.diff().has_changes());
 		assert_eq!(comparison_intersects_1_3.diff().diff(), "-Charlie\n+Cat\n Delta\n Echo\n");
@@ -798,7 +817,7 @@ mod tests {
 	#[test]
 	fn test_diff_does_not_intersect() -> Result<(), anyhow::Error> {
 		let source_does_not_intersect =
-			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L7-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2")?;
+			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L7-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let comparison_does_not_intersect = source_does_not_intersect.get()?;
 		assert!(!comparison_does_not_intersect.diff().has_changes());
 

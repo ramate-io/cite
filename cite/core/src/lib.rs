@@ -165,6 +165,10 @@ pub trait Current<R: Referenced, D: Diff>: Content {
 pub trait Source<R: Referenced, C: Current<R, D>, D: Diff> {
 	fn id(&self) -> &Id;
 
+	fn name(&self) -> &str {
+		self.id().as_str()
+	}
+
 	fn get_referenced(&self) -> Result<R, SourceError>;
 
 	fn get_current(&self) -> Result<C, SourceError>;
