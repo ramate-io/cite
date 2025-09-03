@@ -137,7 +137,11 @@ fn next_source_id() -> usize {
 }
 
 mod annotation;
+mod documentation;
+mod extraction;
 mod level;
+mod prevalidation;
+mod validation;
 
 /// Mock source parsing and construction
 ///
@@ -189,18 +193,13 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 	let mut kwargs = std::collections::HashMap::new();
 
 	// Parse the first argument as the source type
-	if let Some(first_arg) = args_vec.first() {
-		if let Expr::Path(path_expr) = first_arg {
-			if path_expr.path.segments.len() == 1 {
-				let source_type = path_expr.path.segments[0].ident.to_string();
-				kwargs.insert("src".to_string(), source_type);
-			}
-		}
+	if let Some(source_type) = extraction::extract_source_type(&args_vec) {
+		kwargs.insert("src".to_string(), serde_json::Value::String(source_type));
 	}
 
 	// If source is "above", parse the doc comment and replace it
-	if kwargs.get("src").map(|s| s.as_str()) == Some("above") {
-		match parse_above_into_kwargs(&mut item) {
+	if kwargs.get("src").and_then(|v| v.as_str()) == Some("above") {
+		match extraction::above::parse_above_into_kwargs(&mut item) {
 			Ok(doc_kwargs) => {
 				// Replace the "above" source with the actual source from doc comment
 				if let Some(actual_src) = doc_kwargs.get("src") {
@@ -226,11 +225,14 @@ pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
 
 	// Parse remaining cite arguments into kwargs
 	if args_vec.len() > 1 {
-		parse_cite_kwargs(&args_vec[1..], &mut kwargs);
+		let additional_kwargs = extraction::parse_cite_kwargs(&args_vec[1..]);
+		for (key, value) in additional_kwargs {
+			kwargs.insert(key, value);
+		}
 	}
 
 	// Validate and create citation
-	let citation = match validate_with_kwargs(&kwargs) {
+	let citation = match prevalidation::validate_with_kwargs(&kwargs) {
 		Ok(citation) => citation,
 		Err(err) => return err.to_compile_error().into(),
 	};
@@ -280,7 +282,7 @@ struct Citation {
 	// For keyword syntax, store the raw arguments
 	raw_args: Option<Vec<Expr>>,
 	// For kwargs syntax, store the parsed kwargs
-	kwargs: Option<std::collections::HashMap<String, String>>,
+	kwargs: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 /// Handle citation on a function
@@ -1041,7 +1043,9 @@ fn attempt_macro_expansion_validation(
 	let annotation_result = annotation::check_annotation_requirements(citation, &behavior)?;
 
 	// Try to handle common source patterns
-	if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
+	if let Some(result) =
+		validation::try_execute_source_expression(citation, &behavior, level_override)
+	{
 		return match (result, annotation_result) {
 			// if also an annotation result, join them together
 			(Ok(Some(result)), Some(annotation_result)) => {
@@ -1057,208 +1061,6 @@ fn attempt_macro_expansion_validation(
 	// If we can't execute the source during macro expansion, assume it's valid
 	// The user can always add explicit validation later
 	Ok(None)
-}
-
-/// Try to execute source expressions that we can handle during macro expansion
-fn try_execute_source_expression(
-	citation: &Citation,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	// Check if this uses kwargs syntax by looking for the unit expression
-	if let Expr::Tuple(tuple_expr) = &citation.source_expr {
-		if tuple_expr.elems.is_empty() {
-			// This is a unit expression, check if we have kwargs
-			if citation.kwargs.is_some() {
-				return execute_kwargs_source_validation(citation, behavior, level_override);
-			}
-		}
-	}
-
-	// Check if this uses keyword syntax by looking for the keyword_syntax marker
-	if let Expr::Path(path_expr) = &citation.source_expr {
-		if path_expr.path.segments.len() == 1
-			&& path_expr.path.segments[0].ident == "keyword_syntax"
-		{
-			// Use keyword syntax parsing - try all source types
-			if let Some(args) = &citation.raw_args {
-				// Try mock sources first
-				if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args)
-				{
-					return execute_mock_source_validation(mock_source, behavior, level_override);
-				}
-
-				// Try HTTP sources
-				if let Some(http_source) = http::try_construct_http_source_from_citation_args(args)
-				{
-					return execute_http_source_validation(http_source, behavior, level_override);
-				}
-
-				// Try Git sources
-				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
-					return execute_git_source_validation(git_source, behavior, level_override);
-				}
-			}
-		}
-	}
-
-	// Check if this uses the new syntax where the source type is the first argument
-	if let Some(args) = &citation.raw_args {
-		if !args.is_empty() {
-			// Try Git sources first (since git is the most common)
-			if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
-				return execute_git_source_validation(git_source, behavior, level_override);
-			}
-
-			// Try HTTP sources
-			if let Some(http_source) = http::try_construct_http_source_from_citation_args(args) {
-				return execute_http_source_validation(http_source, behavior, level_override);
-			}
-
-			// Try mock sources
-			if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
-				return execute_mock_source_validation(mock_source, behavior, level_override);
-			}
-		}
-	}
-
-	// Try to construct and execute MockSource using the traditional expression parsing
-	if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
-		return execute_mock_source_validation(mock_source, behavior, level_override);
-	}
-
-	// Add support for other source types here as needed
-	None
-}
-
-/// Execute kwargs source validation and return the result
-fn execute_kwargs_source_validation(
-	_citation: &Citation,
-	_behavior: &cite_core::CitationBehavior,
-	_level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	// The kwargs have already been validated in validate_with_kwargs
-	// Just return success
-	Some(Ok(None))
-}
-
-/// Execute mock source validation and return the result
-fn execute_mock_source_validation(
-	mock_source: cite_core::mock::MockSource,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// Execute the real API!
-	match mock_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = format!(
-					"Citation content has changed!\n         Referenced: {}\n         Current: {}",
-					comparison.referenced().0,
-					comparison.current().0
-				);
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("Citation source error: {:?}", e))),
-	}
-}
-
-/// Execute HTTP source validation and return the result
-fn execute_http_source_validation(
-	http_source: cite_http::HttpMatch,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// HTTP sources now handle caching internally
-	match http_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
-					format!(
-						"HTTP citation content has changed!\n         URL: {}\n{}",
-						comparison.current().source_url.as_str(),
-						unified_diff
-					)
-				} else {
-					format!(
-                        "HTTP citation content has changed!\n         URL: {}\n         Current: {}\n         Referenced: {}",
-                        comparison.current().source_url.as_str(),
-                        comparison.current().content,
-                        comparison.referenced().content
-                    )
-				};
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("HTTP citation source error: {:?}", e))),
-	}
-}
-
-/// Execute Git source validation and return the result
-fn execute_git_source_validation(
-	git_source: cite_git::GitSource,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// Git sources handle git operations internally
-	match git_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
-					format!(
-						"Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}\n{}",
-						comparison.current().remote,
-						comparison.current().path_pattern.path,
-						comparison.current().revision,
-						unified_diff
-					)
-				} else {
-					format!(
-                        "Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}",
-                        comparison.current().remote,
-                        comparison.current().path_pattern.path,
-                        comparison.current().revision
-                    )
-				};
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("Git citation source error: {:?}", e))),
-	}
 }
 
 /// Parse doc comment into key-value map and remove the cite above content
