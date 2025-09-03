@@ -526,16 +526,25 @@ fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_mac
 
 	item_fn.block.stmts.insert(0, validation_stmt);
 
+	// Add citation footnote to doc comments
+	add_citation_footnote_to_item(&mut item_fn.attrs, &citation);
+
 	quote! { #item_fn }
 }
 
 /// Handle citation on a struct
-fn handle_struct_citation(citation: Citation, item_struct: ItemStruct) -> proc_macro2::TokenStream {
+fn handle_struct_citation(
+	citation: Citation,
+	mut item_struct: ItemStruct,
+) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
+
+	// Add citation footnote to doc comments
+	add_citation_footnote_to_item(&mut item_struct.attrs, &citation);
 
 	quote! {
 		#item_struct
@@ -545,12 +554,18 @@ fn handle_struct_citation(citation: Citation, item_struct: ItemStruct) -> proc_m
 }
 
 /// Handle citation on a trait
-fn handle_trait_citation(citation: Citation, item_trait: ItemTrait) -> proc_macro2::TokenStream {
+fn handle_trait_citation(
+	citation: Citation,
+	mut item_trait: ItemTrait,
+) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
+
+	// Add citation footnote to doc comments
+	add_citation_footnote_to_item(&mut item_trait.attrs, &citation);
 
 	quote! {
 		#item_trait
@@ -560,7 +575,7 @@ fn handle_trait_citation(citation: Citation, item_trait: ItemTrait) -> proc_macr
 }
 
 /// Handle citation on an impl block
-fn handle_impl_citation(citation: Citation, item_impl: ItemImpl) -> proc_macro2::TokenStream {
+fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
 
 	// Use counter for unique const name
@@ -568,6 +583,9 @@ fn handle_impl_citation(citation: Citation, item_impl: ItemImpl) -> proc_macro2:
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
+
+	// Add citation footnote to doc comments
+	add_citation_footnote_to_item(&mut item_impl.attrs, &citation);
 
 	quote! {
 		#item_impl
@@ -577,12 +595,15 @@ fn handle_impl_citation(citation: Citation, item_impl: ItemImpl) -> proc_macro2:
 }
 
 /// Handle citation on a module
-fn handle_mod_citation(citation: Citation, item_mod: ItemMod) -> proc_macro2::TokenStream {
+fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
+
+	// Add citation footnote to doc comments
+	add_citation_footnote_to_item(&mut item_mod.attrs, &citation);
 
 	quote! {
 		#item_mod
@@ -592,7 +613,7 @@ fn handle_mod_citation(citation: Citation, item_mod: ItemMod) -> proc_macro2::To
 }
 
 /// Handle citation on an enum
-fn handle_enum_citation(citation: Citation, item_enum: ItemEnum) -> proc_macro2::TokenStream {
+fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_macro2::TokenStream {
 	let validation_code = generate_validation_code(&citation);
 
 	let validation_const_name = syn::Ident::new(
@@ -600,10 +621,319 @@ fn handle_enum_citation(citation: Citation, item_enum: ItemEnum) -> proc_macro2:
 		proc_macro2::Span::call_site(),
 	);
 
+	// Add citation footnote to doc comments
+	add_citation_footnote_to_item(&mut item_enum.attrs, &citation);
+
 	quote! {
 		#item_enum
 
 		const #validation_const_name: () = { #validation_code };
+	}
+}
+
+/// Add citation footnote to doc comments
+fn add_citation_footnote_to_item(attrs: &mut Vec<syn::Attribute>, citation: &Citation) {
+	// Generate citation footnote
+	let footnote = generate_citation_footnote(citation);
+
+	// Create a new doc comment attribute
+	let doc_attr = parse_quote! {
+		#[doc = #footnote]
+	};
+
+	// Add it to the attributes
+	attrs.push(doc_attr);
+}
+
+/// Generate citation footnote text
+fn generate_citation_footnote(citation: &Citation) -> String {
+	let mut footnote = String::new();
+
+	// Add citation badge linking to the cite repo
+	footnote.push_str("## References\n\n");
+	footnote.push_str(
+		"\n\n<div style=\"background-color:#E6E6FA; border-left:4px solid #9370DB; padding:8px; font-weight:bold;\">\
+	Cited with <a href=\"https://github.com/ramate-io/cite\">cite</a>\
+	</div>\n\n"
+	);
+
+	// Add behavior hint box
+	let behavior = cite_core::CitationBehavior::from_features();
+	match behavior.global {
+		cite_core::CitationGlobal::Strict => {
+			footnote.push_str(
+				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
+	This code uses strict citation validation\
+	</div>\n\n",
+			);
+		}
+		cite_core::CitationGlobal::Lenient => {
+			footnote.push_str(
+				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
+	This code uses lenient citation validation\
+	</div>\n\n",
+			);
+		}
+	}
+
+	// Generate source reference
+	let source_ref = generate_source_reference(citation);
+
+	// Add annotation and level modifiers
+	let mut modifiers = Vec::new();
+	if let Some(level) = &citation.level {
+		modifiers.push(format!("level={}", level.to_uppercase()));
+	}
+	if let Some(annotation) = &citation.annotation {
+		modifiers.push(format!("annotation={}", annotation.to_uppercase()));
+	}
+
+	// Build the enumerated footnote
+	footnote.push_str("\n1. ");
+	footnote.push_str(&source_ref);
+	if !modifiers.is_empty() {
+		footnote.push_str(&format!(" [{}]", modifiers.join(", ")));
+	}
+
+	// Add reason if provided
+	if let Some(reason) = &citation.reason {
+		footnote.push_str(&format!(": {}", reason));
+	}
+
+	footnote
+}
+
+/// Generate source reference with hyperlink where applicable
+fn generate_source_reference(citation: &Citation) -> String {
+	// Try to extract source information from the citation
+	if let Some(args) = &citation.raw_args {
+		if !args.is_empty() {
+			// Check if this is a git source
+			if let Some(first_arg) = args.first() {
+				if let syn::Expr::Path(path_expr) = first_arg {
+					if path_expr.path.segments.len() == 1
+						&& path_expr.path.segments[0].ident == "git"
+					{
+						return generate_git_source_reference(args);
+					} else if path_expr.path.segments.len() == 1
+						&& path_expr.path.segments[0].ident == "http"
+					{
+						return generate_http_source_reference(args);
+					} else if path_expr.path.segments.len() == 1
+						&& path_expr.path.segments[0].ident == "mock"
+					{
+						return generate_mock_source_reference(args);
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback for unknown source types
+	"Unknown source".to_string()
+}
+
+/// Generate git source reference with hyperlink
+fn generate_git_source_reference(args: &[syn::Expr]) -> String {
+	let mut remote = None;
+	let mut path = None;
+	let mut referenced_revision = None;
+
+	// Extract git source parameters
+	for arg in args {
+		if let syn::Expr::Assign(assign_expr) = arg {
+			if let syn::Expr::Path(left_path) = &*assign_expr.left {
+				if left_path.path.segments.len() == 1 {
+					let name = &left_path.path.segments[0].ident.to_string();
+
+					match name.as_str() {
+						"remote" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								remote = Some(lit_str.value());
+							}
+						}
+						"path" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								path = Some(lit_str.value());
+							}
+						}
+						"referenced_revision" | "ref_rev" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								referenced_revision = Some(lit_str.value());
+							}
+						}
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	// Build the reference
+	if let (Some(remote_url), Some(file_path), Some(rev)) = (remote, path, referenced_revision) {
+		// Try to create a hyperlink for GitHub URLs
+		if remote_url.contains("github.com") {
+			// Extract owner/repo from GitHub URL
+			if let Some(repo_part) = remote_url.split("github.com/").nth(1) {
+				let _repo_part = repo_part.trim_end_matches(".git");
+				let short_rev = if rev.len() > 8 { &rev[..8] } else { &rev };
+				return format!(
+					"[{}]({}/blob/{}/{}#L1)",
+					format!("Git: {} @ {}", file_path, short_rev),
+					remote_url.trim_end_matches(".git"),
+					rev,
+					file_path
+				);
+			}
+		}
+
+		// Fallback for non-GitHub URLs
+		let short_rev = if rev.len() > 8 { &rev[..8] } else { &rev };
+		format!("Git: {} @ {} ({})", file_path, short_rev, remote_url)
+	} else {
+		"Git source (incomplete parameters)".to_string()
+	}
+}
+
+/// Generate HTTP source reference with hyperlink
+fn generate_http_source_reference(args: &[syn::Expr]) -> String {
+	let mut url = None;
+	let mut pattern = None;
+	let mut selector = None;
+
+	// Extract HTTP source parameters
+	for arg in args {
+		if let syn::Expr::Assign(assign_expr) = arg {
+			if let syn::Expr::Path(left_path) = &*assign_expr.left {
+				if left_path.path.segments.len() == 1 {
+					let name = &left_path.path.segments[0].ident.to_string();
+
+					match name.as_str() {
+						"url" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								url = Some(lit_str.value());
+							}
+						}
+						"pattern" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								pattern = Some(lit_str.value());
+							}
+						}
+						"selector" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								selector = Some(lit_str.value());
+							}
+						}
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	// Build the reference
+	if let Some(url_str) = url {
+		let extraction_method = if pattern.is_some() {
+			"regex pattern"
+		} else if selector.is_some() {
+			"CSS selector"
+		} else {
+			"full content"
+		};
+
+		return format!("[HTTP: {}]({})", extraction_method, url_str);
+	} else {
+		"HTTP source (incomplete parameters)".to_string()
+	}
+}
+
+/// Generate mock source reference
+fn generate_mock_source_reference(args: &[syn::Expr]) -> String {
+	let mut same = None;
+	let mut changed = None;
+
+	// Extract mock source parameters
+	for arg in args {
+		if let syn::Expr::Assign(assign_expr) = arg {
+			if let syn::Expr::Path(left_path) = &*assign_expr.left {
+				if left_path.path.segments.len() == 1 {
+					let name = &left_path.path.segments[0].ident.to_string();
+
+					match name.as_str() {
+						"same" => {
+							if let syn::Expr::Lit(syn::ExprLit {
+								lit: syn::Lit::Str(lit_str),
+								..
+							}) = &*assign_expr.right
+							{
+								same = Some(lit_str.value());
+							}
+						}
+						"changed" => {
+							// Handle tuple syntax for changed
+							if let syn::Expr::Tuple(tuple_expr) = &*assign_expr.right {
+								if tuple_expr.elems.len() == 2 {
+									if let (Some(old), Some(new)) =
+										(tuple_expr.elems.first(), tuple_expr.elems.get(1))
+									{
+										if let (
+											syn::Expr::Lit(syn::ExprLit {
+												lit: syn::Lit::Str(old_lit),
+												..
+											}),
+											syn::Expr::Lit(syn::ExprLit {
+												lit: syn::Lit::Str(new_lit),
+												..
+											}),
+										) = (old, new)
+										{
+											changed = Some((old_lit.value(), new_lit.value()));
+										}
+									}
+								}
+							}
+						}
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	// Build the reference
+	if let Some(content) = same {
+		let preview = if content.len() > 50 { format!("{}...", &content[..50]) } else { content };
+		format!("Mock: same = \"{}\"", preview)
+	} else if let Some((old, new)) = changed {
+		let old_preview = if old.len() > 30 { format!("{}...", &old[..30]) } else { old };
+		let new_preview = if new.len() > 30 { format!("{}...", &new[..30]) } else { new };
+		format!("Mock: changed = (\"{}\", \"{}\")", old_preview, new_preview)
+	} else {
+		"Mock source (incomplete parameters)".to_string()
 	}
 }
 
