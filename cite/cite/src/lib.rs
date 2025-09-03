@@ -707,7 +707,7 @@ fn generate_citation_footnote(
 
 	// Add reason if provided
 	if let Some(reason) = &citation.reason {
-		footnote.push_str(&format!(": {}", reason));
+		footnote.push_str(&format!("\n\n\t{}", reason));
 	}
 
 	footnote
@@ -847,7 +847,7 @@ fn generate_git_source_reference(git_source: &cite_git::GitSource) -> String {
 	let url = git_source.link();
 
 	// Format as [name](url)
-	format!("[{}]({})", name, url)
+	format!("**[{}]({})**", name, url)
 }
 
 /// Generate HTTP source reference with hyperlink from source object
@@ -857,7 +857,7 @@ fn generate_http_source_reference_from_source(http_source: &cite_http::HttpMatch
 	let url = http_source.source_url.as_str();
 	let link_text = http_source.link();
 
-	format!("[{}]({})", link_text, url)
+	format!("**[{}]({})**", link_text, url)
 }
 
 /// Generate HTTP source reference with hyperlink from macro arguments
