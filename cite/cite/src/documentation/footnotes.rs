@@ -23,7 +23,7 @@ pub fn generate_citation_footnote(
 
 	// Build the enumerated footnote
 	footnote.push_str("\n1. ");
-	footnote.push_str(&source_ref);
+	footnote.push_str(format!("**{}**", source_ref).as_str());
 	if !modifiers.is_empty() {
 		footnote.push_str(&format!(" [{}]", modifiers.join(", ")));
 	}
