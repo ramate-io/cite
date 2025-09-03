@@ -80,8 +80,19 @@ impl RepositoryBuilder {
 			let mut fetch_options = FetchOptions::new();
 			fetch_options.remote_callbacks(callbacks);
 
-			let _repo = Repository::clone(&self.remote_url, &repo_path)
-				.map_err(|e| GitSourceError::Git(e))?;
+			match Repository::clone(&self.remote_url, &repo_path) {
+				Ok(_repo) => {}
+				Err(e) => {
+					// Check if this is the "exists and is not an empty directory" error
+					if e.code() == git2::ErrorCode::Exists
+						&& e.message().contains("exists and is not an empty directory")
+					{
+						// simply continue on as the repo already exists
+					} else {
+						return Err(GitSourceError::Git(e));
+					}
+				}
+			};
 		}
 
 		Ok(RepositoryManager::new(repo_path))
