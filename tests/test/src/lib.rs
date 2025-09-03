@@ -7,7 +7,10 @@ use cite::cite;
 	ref_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
 	cur_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
 	path = "README.md",
-	reason = "Testing git source"
+	reason = r"
+### Testing git source
+
+With some markdown, here's a link [to the git source](https://github.com/ramate-io/cite/blob/94dab273cf6c2abe8742d6d459ad45c96ca9b694/README.md#L1)."
 )]
 #[cite(
 	mock,

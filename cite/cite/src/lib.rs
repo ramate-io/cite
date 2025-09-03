@@ -721,7 +721,7 @@ fn generate_global_citation_formatting() -> String {
 fn generate_citation_footnote(
 	citation: &Citation,
 	link_text: Option<String>,
-	_warning_text: String,
+	warning_text: String,
 ) -> String {
 	let mut footnote = String::new();
 
@@ -747,7 +747,23 @@ fn generate_citation_footnote(
 
 	// Add reason if provided
 	if let Some(reason) = &citation.reason {
-		footnote.push_str(&format!("\n\n\t{}", reason));
+		// Handle multiline reasons by splitting and prefixing each line with tab
+		let formatted_reason =
+			reason.lines().map(|line| format!("\t{}", line)).collect::<Vec<_>>().join("\n");
+
+		footnote.push_str(&format!("\n\n{}", formatted_reason));
+	}
+
+	if !warning_text.is_empty() {
+		// Handle multiline warning text by splitting and prefixing each line with tab
+		let formatted_warning = warning_text
+			.lines()
+			.map(|line| format!("\t{}", line))
+			.collect::<Vec<_>>()
+			.join("\n");
+
+		// warning box for warning text
+		footnote.push_str(&format!("\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:20px;\">\n\n{}\n\n</div>", formatted_warning));
 	}
 
 	footnote
