@@ -166,6 +166,8 @@ mod mock;
 /// Additional behavior parameters are handled by the main citation parser.
 mod http;
 
+mod git;
+
 /// The main `#[cite]` attribute macro
 ///
 /// Supports keyword argument syntax like:
@@ -247,7 +249,7 @@ fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<C
 			if path_expr.path.segments.len() == 1 {
 				let source_type = &path_expr.path.segments[0].ident.to_string();
 				match source_type.as_str() {
-					"mock" | "http" => {
+					"mock" | "http" | "git" => {
 						return parse_keyword_syntax(args_vec);
 					}
 					_ => {
@@ -287,6 +289,15 @@ fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
 						}
 						// HTTP source parameters
 						"url" | "pattern" | "selector" | "match_type" | "fragment" | "cache" => {
+							source_args_found = true;
+						}
+						// Git source parameters
+						"remote"
+						| "referenced_revision"
+						| "ref_rev"
+						| "current_revision"
+						| "cur_rev"
+						| "path" => {
 							source_args_found = true;
 						}
 						"reason" => {
@@ -766,6 +777,31 @@ fn try_execute_source_expression(
 				{
 					return execute_http_source_validation(http_source, behavior, level_override);
 				}
+
+				// Try Git sources
+				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
+					return execute_git_source_validation(git_source, behavior, level_override);
+				}
+			}
+		}
+	}
+
+	// Check if this uses the new syntax where the source type is the first argument
+	if let Some(args) = &citation.raw_args {
+		if !args.is_empty() {
+			// Try Git sources first (since git is the most common)
+			if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
+				return execute_git_source_validation(git_source, behavior, level_override);
+			}
+
+			// Try HTTP sources
+			if let Some(http_source) = http::try_construct_http_source_from_citation_args(args) {
+				return execute_http_source_validation(http_source, behavior, level_override);
+			}
+
+			// Try mock sources
+			if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
+				return execute_mock_source_validation(mock_source, behavior, level_override);
 			}
 		}
 	}
@@ -851,5 +887,49 @@ fn execute_http_source_validation(
 			Some(Ok(None))
 		}
 		Err(e) => Some(Err(format!("HTTP citation source error: {:?}", e))),
+	}
+}
+
+/// Execute Git source validation and return the result
+fn execute_git_source_validation(
+	git_source: cite_git::GitSource,
+	behavior: &cite_core::CitationBehavior,
+	level_override: Option<cite_core::CitationLevel>,
+) -> Option<std::result::Result<Option<String>, String>> {
+	use cite_core::Source;
+
+	// Git sources handle git operations internally
+	match git_source.get() {
+		Ok(comparison) => {
+			let result = comparison.validate(behavior, level_override);
+
+			if !result.is_valid() {
+				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
+					format!(
+						"Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}\n{}",
+						comparison.current().remote,
+						comparison.current().path_pattern.path,
+						comparison.current().revision,
+						unified_diff
+					)
+				} else {
+					format!(
+                        "Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}",
+                        comparison.current().remote,
+                        comparison.current().path_pattern.path,
+                        comparison.current().revision
+                    )
+				};
+
+				if result.should_fail_compilation() {
+					return Some(Err(diff_msg));
+				} else if result.should_report() {
+					return Some(Ok(Some(diff_msg)));
+				}
+			}
+
+			Some(Ok(None))
+		}
+		Err(e) => Some(Err(format!("Git citation source error: {:?}", e))),
 	}
 }

@@ -1,0 +1,10 @@
+Aaron
+Bear
+Cat
+Delta
+Echo
+Foxtrot
+Gamma
+Halifax
+Istanbul
+Juniper

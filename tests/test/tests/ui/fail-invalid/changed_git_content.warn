@@ -1,0 +1,254 @@
+warning: use of deprecated function `test_function_with_git_citation::_::_citation_warning`: Git citation content has changed!
+                  Remote: https://github.com/ramate-io/cite
+                  Path: README.md
+                  Revision: main
+         Fdiff --git a/README.md b/README.md
+         index 0fd493a..3c53f6e 100644
+         --- a/README.md
+         +++ b/README.md
+         H@@ -1,2 +1,230 @@
+         -# cite
+         -An API for referencing and checking references in code.
+         +# Cite
+         +
+         +A Rust procedural macro system for compile-time citation validation and content tracking.
+         +
+         +## Overview
+         +
+         +Cite allows you to annotate your Rust code with references to external content and validate at compile time that the content hasn't changed. This is particularly useful for:
+         +
+         +- **Documentation**: Ensuring code examples stay in sync with referenced APIs
+         +- **Research Code**: Tracking data sources and algorithm implementations
+         +- **Compliance**: Maintaining audit trails for regulatory requirements
+         +- **Dependency Tracking**: Monitoring external content that your code relies on
+         +
+         +## Quick Start
+         +
+         +Add cite to your `Cargo.toml`:
+         +
+         +```toml
+         +[dependencies]
+         +cite = "0.1.0"
+         +cite-core = "0.1.0"  # For runtime utilities
+         +```
+         +
+         +Use the `#[cite]` attribute to annotate your code:
+         +
+         +```rust
+         +use cite::cite;
+         +
+         +// Basic citation - content matches, compiles successfully
+         +#[cite(mock, same = "current API")]
+         +fn my_function() {
+         +    println!("This function references the current API");
+         +}
+         +
+         +// Changed content with ERROR level - fails compilation
+         +#[cite(mock, changed = ("old API", "new API"), level = "ERROR")]
+         +fn updated_function() {
+         +    println!("This function was updated when the API changed");
+         +}
+         +
+         +// Changed content with SILENT level - compiles with warning
+         +#[cite(mock, changed = ("v1.0", "v2.0"), level = "SILENT", reason = "Version upgrade")]
+         +fn version_dependent_function() {
+         +    println!("This function depends on external version");
+         +}
+         +```
+         +
+         +## Syntax
+         +
+         +The cite system uses a keyword argument syntax that's clean and extensible:
+         +
+         +```rust
+         +#[cite(SOURCE_TYPE, SOURCE_ARGS..., BEHAVIOR_ARGS...)]
+         +```
+         +
+         +### Mock Sources (for testing)
+         +
+         +```rust
+         +// Content that should remain unchanged
+         +#[cite(mock, same = "content")]
+         +
+         +// Content that has changed (old -> new)
+         +#[cite(mock, changed = ("old content", "new content"))]
+         +```
+         +
+         +### Behavior Control
+         +
+         +```rust
+         +// Control compilation behavior
+         +level = "ERROR"    // Fail compilation on content mismatch (default)
+         +level = "WARN"     // Emit warning on content mismatch
+         +level = "SILENT"   // No output on content mismatch
+         +
+         +// Add metadata
+         +reason = "Why this reference is important"
+         +annotation = "ANY" | "FOOTNOTE"
+         +```
+         +
+         +### Complete Example
+         +
+         +```rust
+         +#[cite(
+         +    mock,
+         +    changed = ("v1.0.0", "v1.1.0"),
+         +    level = "WARN",
+         +    reason = "External API version dependency",
+         +    annotation = "FOOTNOTE"
+         +)]
+         +fn api_dependent_function() {
+         +    // Function implementation
+         +}
+         +```
+         +
+         +## Architecture
+         +
+         +Cite is designed with modularity and zero runtime overhead in mind:
+         +
+         +```
+         +cite/
+         +├── cite/           # Main procedural macro crate (user-facing)
+         +├── core/           # Core traits and types (lightweight, std-compatible)
+         +└── test/           # Comprehensive test suite
+         +```
+         +
+         +### Design Principles
+         +
+         +1. **Zero Runtime Overhead**: All validation happens at compile time
+         +2. **Keyword Syntax**: Clean, extensible syntax that avoids parsing ambiguities
+         +3. **Modular Architecture**: Separate core traits from macro implementation
+         +4. **Compile-time Validation**: Errors and warnings appear during `cargo build`
+         +5. **Environment Integration**: Configurable via environment variables
+         +
+         +## Environment Variables
+         +
+         +Control cite behavior globally:
+         +
+         +```bash
+         +# Set global citation level (ERROR, WARN, SILENT)
+         +export CITE_LEVEL=WARN
+         +
+         +# Set global annotation mode (ANY, FOOTNOTE)
+         +export CITE_ANNOTATION=FOOTNOTE
+         +
+         +# Set global behavior (STRICT, LENIENT)
+         +export CITE_GLOBAL=STRICT
+         +```
+         +
+         +## Advanced Usage
+         +
+         +### Runtime Utilities
+         +
+         +For testing and runtime usage, cite-core provides helper functions:
+         +
+         +```rust
+         +use cite_core::{mock_source_same, mock_source_changed, Source};
+         +
+         +// Create mock sources at runtime
+         +let source1 = mock_source_same("content");
+         +let source2 = mock_source_changed("old", "new");
+         +
+         +// Use the Source trait
+         +let comparison = source1.get().expect("Source validation failed");
+         +println!("Referenced: {}", comparison.referenced().0);
+         +println!("Current: {}", comparison.current().0);
+         +```
+         +
+         +### Multiple Citations
+         +
+         +Apply multiple citations to the same item:
+         +
+         +```rust
+         +#[cite(mock, same = "first reference")]
+         +#[cite(mock, same = "second reference")]
+         +fn multi_referenced_function() {
+         +    // Implementation
+         +}
+         +```
+         +
+         +### Supported Items
+         +
+         +Citations can be applied to:
+         +
+         +- Functions
+         +- Structs
+         +- Traits
+         +- `impl` blocks
+         +- Modules
+         +
+         +```rust
+         +#[cite(mock, same = "struct docs")]
+         +struct MyStruct {
+         +    field: i32,
+         +}
+         +
+         +#[cite(mock, same = "trait definition")]
+         +trait MyTrait {
+         +    fn method(&self);
+         +}
+         +
+         +#[cite(mock, same = "implementation")]
+         +impl MyStruct {
+         +    fn new() -> Self { Self { field: 0 } }
+         +}
+         +
+         +#[cite(mock, same = "module docs")]
+         +mod my_module {
+         +    pub fn helper() {}
+         +}
+         +```
+         +
+         +## Implementation Notes
+         +
+         +### Why Keyword Syntax?
+         +
+         +The current keyword syntax (`mock, same = "content"`) was chosen after evaluating several alternatives:
+         +
+         +1. **Function-like syntax** (`mock(same("content"))`) - Had parsing issues with macro expansion order
+         +2. **Struct syntax** (`MockSource::same("content")`) - Required complex AST pattern matching
+         +3. **Keyword syntax** (`mock, same = "content"`) - ✅ Clean, unambiguous, extensible
+         +
+         +### Compile-time Validation
+         +
+         +Citation validation runs during macro expansion, which means:
+         +
+         +- Network calls (for future HTTP sources) happen during compilation
+         +- Validation results determine whether compilation succeeds or fails
+         +- No runtime performance impact on your application
+         +
+         +### Future Source Types
+         +
+         +The architecture is designed to support additional source types:
+         +
+         +- HTTP sources for validating web content
+         +- File sources for local content validation
+         +- Git sources for repository content validation
+         +- Custom source implementations
+         +
+         +## Contributing
+         +
+         +| Task | Description |
+         +|------|-------------|
+         +| [Upcoming Events](https://github.com/ramate-io/cite/issues?q=is%3Aissue%20state%3Aopen%20label%3Apriority%3Ahigh%2Cpriority%3Amedium%20label%3Aevent) | High-priority `event` issues with planned completion dates. |
+         +| [Release Candidates](https://github.com/ramate-io/cite/issues?q=is%3Aissue%20state%3Aopen%20label%3Arelease-candidate) | Feature-complete versions linked to events. |
+         +| [Features & Bugs](https://github.com/ramate-io/cite/issues?q=is%3Aissue%20state%3Aopen%20label%3Afeature%2Cbug%20label%3Apriority%3Aurgent%2Cpriority%3Ahigh) | High-priority `feature` and `bug` issues. |
+         +
+         +Please see [CONTRIBUTING.md](CONTRIBUTING.md) file for additional contribution guidelines.
+         +
+         +## License
+         +
+         +[MIT License](./LICENSE)
+  --> tests/ui/fail-invalid-warn/changed_git_content.rs:5:1
+   |
+5  | / #[cite(
+6  | |     git,
+7  | |     remote = "https://github.com/ramate-io/cite",
+8  | |     ref_rev = "74aa653664cd90adcc5f836f1777f265c109045b",
+...  |
+11 | |     reason = "Testing git source"
+12 | | )]
+   | |__^
+   |
+   = note: `#[warn(deprecated)]` on by default
+   = note: this warning originates in the attribute macro `cite` (in Nightly builds, run with -Z macro-backtrace for more info)

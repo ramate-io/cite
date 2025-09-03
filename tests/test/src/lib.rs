@@ -50,12 +50,42 @@ pub mod tests {
 		}
 	}
 
+	// Test the http source
+	#[cite(
+		http,
+		url = "https://jsonplaceholder.typicode.com/todos/1",
+		match_type = "full",
+		reason = "Testing http source"
+	)]
+	fn test_http_source() {
+		println!("This function has a citation with an http source");
+	}
+
+	// Test the git source
+	#[cite(
+		git,
+		remote = "https://github.com/ramate-io/cite",
+		ref_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+		cur_rev = "94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+		path = "README.md",
+		reason = "Testing git source"
+	)]
+	fn test_git_source() {
+		println!("This function has a citation with a git source");
+	}
+
 	#[test]
 	fn test_basic_functionality() {
 		// Test that cited functions can be called normally
 		test_function();
 		test_function_with_reason();
 		test_function_with_multiple_attributes();
+
+		// Test that cited http source works normally
+		test_http_source();
+
+		// Test that cited git source works normally
+		test_git_source();
 
 		// Test that cited structs work normally
 		let test_struct = TestStruct::new("test".to_string());

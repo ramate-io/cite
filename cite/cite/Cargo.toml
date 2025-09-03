@@ -19,6 +19,7 @@ proc-macro2 = { workspace = true }
 cite-core = { workspace = true }
 cite-cache = { workspace = true }
 cite-http = { workspace = true }
+cite-git = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
