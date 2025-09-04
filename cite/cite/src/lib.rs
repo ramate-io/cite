@@ -119,7 +119,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
 	parse_macro_input, parse_quote, punctuated::Punctuated, Expr, ItemEnum, ItemFn, ItemImpl,
-	ItemMod, ItemStruct, ItemTrait, Lit, Result, Token,
+	ItemMod, ItemStruct, ItemTrait, Token,
 };
 
 // Counter for generating unique validation constant names
@@ -137,7 +137,12 @@ fn next_source_id() -> usize {
 }
 
 mod annotation;
+mod documentation;
+mod extraction;
 mod level;
+mod prevalidation;
+mod sources;
+mod validation;
 
 /// Mock source parsing and construction
 ///
@@ -150,23 +155,6 @@ mod level;
 /// - `mock, changed = ("old", "new")`: Content that has changed from old to new
 ///
 /// Additional behavior parameters are handled by the main citation parser.
-mod mock;
-
-/// HTTP/Http source parsing and construction
-///
-/// This module handles the parsing of HTTP source syntax and construction of
-/// HttpMatch instances during macro expansion. It implements the keyword
-/// argument parsing for HTTP sources.
-///
-/// The HTTP source syntax supports:
-/// - `http, url = "https://example.com", pattern = "regex"`: Regex content extraction
-/// - `http, url = "https://example.com", selector = "h1"`: CSS selector extraction  
-/// - `http, url = "https://example.com", match_type = "full"`: Full document validation
-///
-/// Additional behavior parameters are handled by the main citation parser.
-mod http;
-
-mod git;
 
 /// The main `#[cite]` attribute macro
 ///
@@ -177,11 +165,58 @@ mod git;
 /// - `#[cite(mock, changed = ("old", "new"), level = "ERROR", annotation = "ANY")]`
 #[proc_macro_attribute]
 pub fn cite(args: TokenStream, input: TokenStream) -> TokenStream {
+	// Parse the input item
+	let input_clone = input.clone();
+	let mut item = parse_macro_input!(input_clone as syn::Item);
+
 	// Parse as a list of expressions separated by commas
 	let args = parse_macro_input!(args with Punctuated::<Expr, Token![,]>::parse_terminated);
+	let args_vec: Vec<_> = args.into_iter().collect();
 
-	// Parse the citation arguments
-	let citation = match parse_citation_args_from_exprs(args) {
+	// Parse into key-value map
+	let mut kwargs = std::collections::HashMap::new();
+
+	// Parse the first argument as the source type
+	if let Some(source_type) = extraction::extract_source_type(&args_vec) {
+		kwargs.insert("src".to_string(), serde_json::Value::String(source_type));
+	}
+
+	// If source is "above", parse the doc attribute and remove it
+	if kwargs.get("src").and_then(|v| v.as_str()) == Some("above") {
+		match extraction::above::parse_above_into_kwargs(&mut item) {
+			Ok(doc_kwargs) => {
+				// Replace the "above" source with the actual source from doc comment
+				if let Some(actual_src) = doc_kwargs.get("src") {
+					kwargs.insert("src".to_string(), actual_src.clone());
+				} else {
+					return syn::Error::new(
+						proc_macro2::Span::call_site(),
+						"<cite above> block must contain a 'src' field",
+					)
+					.to_compile_error()
+					.into();
+				}
+				// Merge all other doc kwargs
+				for (key, value) in doc_kwargs {
+					if key != "src" {
+						kwargs.insert(key, value);
+					}
+				}
+			}
+			Err(err) => return err.to_compile_error().into(),
+		}
+	}
+
+	// Parse remaining cite arguments into kwargs
+	if args_vec.len() > 1 {
+		let additional_kwargs = extraction::parse_cite_kwargs(&args_vec[1..]);
+		for (key, value) in additional_kwargs {
+			kwargs.insert(key, value);
+		}
+	}
+
+	// Validate and create citation
+	let citation = match prevalidation::validate_with_kwargs(&kwargs, &args_vec) {
 		Ok(citation) => citation,
 		Err(err) => return err.to_compile_error().into(),
 	};
@@ -228,296 +263,26 @@ struct Citation {
 	reason: Option<String>,
 	level: Option<String>,
 	annotation: Option<String>,
-	// For keyword syntax, store the raw arguments
-	raw_args: Option<Vec<Expr>>,
+
+	// For kwargs syntax, store the parsed kwargs
+	kwargs: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
-/// Parse the citation arguments from expressions
-fn parse_citation_args_from_exprs(args: Punctuated<Expr, Token![,]>) -> Result<Citation> {
-	if args.is_empty() {
-		return Err(syn::Error::new(
-			proc_macro2::Span::call_site(),
-			"cite attribute requires a source expression",
-		));
-	}
-
-	let args_vec: Vec<_> = args.into_iter().collect();
-
-	// Check if this uses the new keyword syntax starting with source type
-	if let Some(first_arg) = args_vec.first() {
-		if let Expr::Path(path_expr) = first_arg {
-			if path_expr.path.segments.len() == 1 {
-				let source_type = &path_expr.path.segments[0].ident.to_string();
-				match source_type.as_str() {
-					"mock" | "http" | "git" => {
-						return parse_keyword_syntax(args_vec);
-					}
-					_ => {
-						// Unknown source type, fall back to single expression syntax
-					}
-				}
+impl Citation {
+	pub fn get_src(&self) -> Result<String, String> {
+		if let Some(kwargs) = &self.kwargs {
+			if let Some(src) = kwargs.get("src") {
+				return Ok(src.as_str().ok_or("src must be a string")?.to_string());
 			}
 		}
+		Err("src not found".to_string())
 	}
-
-	// Fall back to the old single source expression syntax
-	parse_single_source_syntax(args_vec)
-}
-
-/// Parse the new keyword syntax: SOURCE_TYPE, PARAMS..., level = "ERROR"
-///
-/// Supports both mock and http source types:
-/// - mock, same = "content", level = "ERROR"
-/// - http, url = "https://example.com", pattern = "regex", level = "WARN"
-fn parse_keyword_syntax(args: Vec<Expr>) -> Result<Citation> {
-	let mut reason = None;
-	let mut level = None;
-	let mut annotation = None;
-	let mut source_args_found = false;
-
-	// Parse all arguments, looking for source specification and other attributes
-	for arg in &args {
-		if let Expr::Assign(assign_expr) = arg {
-			if let Expr::Path(left_path) = &*assign_expr.left {
-				if left_path.path.segments.len() == 1 {
-					let name = &left_path.path.segments[0].ident.to_string();
-
-					match name.as_str() {
-						// Mock source parameters
-						"same" | "changed" => {
-							source_args_found = true;
-						}
-						// HTTP source parameters
-						"url" | "pattern" | "selector" | "match_type" | "fragment" | "cache" => {
-							source_args_found = true;
-						}
-						// Git source parameters
-						"remote"
-						| "referenced_revision"
-						| "ref_rev"
-						| "current_revision"
-						| "cur_rev"
-						| "path" => {
-							source_args_found = true;
-						}
-						"reason" => {
-							if let Expr::Lit(expr_lit) = &*assign_expr.right {
-								if let Lit::Str(lit_str) = &expr_lit.lit {
-									reason = Some(lit_str.value());
-								} else {
-									return Err(syn::Error::new_spanned(
-										&assign_expr.right,
-										"reason must be a string literal",
-									));
-								}
-							} else {
-								return Err(syn::Error::new_spanned(
-									&assign_expr.right,
-									"reason must be a string literal",
-								));
-							}
-						}
-						"level" => {
-							if let Expr::Lit(expr_lit) = &*assign_expr.right {
-								if let Lit::Str(lit_str) = &expr_lit.lit {
-									level = Some(lit_str.value());
-								} else {
-									return Err(syn::Error::new_spanned(
-										&assign_expr.right,
-										"level must be a string literal",
-									));
-								}
-							} else {
-								return Err(syn::Error::new_spanned(
-									&assign_expr.right,
-									"level must be a string literal",
-								));
-							}
-						}
-						"annotation" => {
-							if let Expr::Lit(expr_lit) = &*assign_expr.right {
-								if let Lit::Str(lit_str) = &expr_lit.lit {
-									annotation = Some(lit_str.value());
-								} else {
-									return Err(syn::Error::new_spanned(
-										&assign_expr.right,
-										"annotation must be a string literal",
-									));
-								}
-							} else {
-								return Err(syn::Error::new_spanned(
-									&assign_expr.right,
-									"annotation must be a string literal",
-								));
-							}
-						}
-						_ => {
-							return Err(syn::Error::new_spanned(
-								&left_path.path,
-								format!("Unknown citation attribute: {}", name),
-							));
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if !source_args_found {
-		return Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "keyword syntax requires source-specific parameters (e.g., 'same = \"content\"' for mock or 'url = \"...\"' for http)"
-        ));
-	}
-
-	// Now validate that the source type can actually be constructed with the given arguments
-	// Try to construct the source to validate completeness
-	if let Some(first_arg) = args.first() {
-		if let Expr::Path(path_expr) = first_arg {
-			if path_expr.path.segments.len() == 1 {
-				let source_type = &path_expr.path.segments[0].ident.to_string();
-				match source_type.as_str() {
-					"mock" => {
-						if mock::try_construct_mock_source_from_citation_args(&args).is_none() {
-							return Err(syn::Error::new(
-                                proc_macro2::Span::call_site(),
-                                "invalid mock syntax - requires 'same = \"content\"' or 'changed = (\"old\", \"new\")'"
-                            ));
-						}
-					}
-					"http" => {
-						if http::try_construct_http_source_from_citation_args(&args).is_none() {
-							return Err(syn::Error::new(
-                                proc_macro2::Span::call_site(),
-                                "invalid http syntax - requires 'url = \"...\"' and one of 'pattern = \"...\"', 'selector = \"...\"', or 'match_type = \"full\"'"
-                            ));
-						}
-					}
-					_ => {
-						// Unknown source type should have been caught earlier
-					}
-				}
-			}
-		}
-	}
-
-	// Create a special marker source expression with the args embedded
-	// This allows us to pass the keyword arguments to the validation phase
-	let source_expr = syn::parse_quote! { keyword_syntax };
-
-	Ok(Citation { source_expr, reason, level, annotation, raw_args: Some(args) })
-}
-
-/// Parse the traditional single source expression syntax
-fn parse_single_source_syntax(args: Vec<Expr>) -> Result<Citation> {
-	let mut source_expr = None;
-	let mut reason = None;
-	let mut level = None;
-	let mut annotation = None;
-	let mut first = true;
-
-	let args_clone = args.clone();
-	for arg in args {
-		match &arg {
-			// First argument should be the source expression
-			_ if first => {
-				source_expr = Some(arg);
-				first = false;
-			}
-
-			// Handle named arguments like reason = "...", level = "WARN", etc.
-			Expr::Assign(assign_expr) => {
-				if let Expr::Path(path_expr) = &*assign_expr.left {
-					if let Some(ident) = path_expr.path.get_ident() {
-						let name = ident.to_string();
-
-						match name.as_str() {
-							"reason" => {
-								if let Expr::Lit(expr_lit) = &*assign_expr.right {
-									if let Lit::Str(lit_str) = &expr_lit.lit {
-										reason = Some(lit_str.value());
-									} else {
-										return Err(syn::Error::new_spanned(
-											&assign_expr.right,
-											"reason must be a string literal",
-										));
-									}
-								} else {
-									return Err(syn::Error::new_spanned(
-										&assign_expr.right,
-										"reason must be a string literal",
-									));
-								}
-							}
-							"level" => {
-								if let Expr::Lit(expr_lit) = &*assign_expr.right {
-									if let Lit::Str(lit_str) = &expr_lit.lit {
-										level = Some(lit_str.value());
-									} else {
-										return Err(syn::Error::new_spanned(
-											&assign_expr.right,
-											"level must be a string literal",
-										));
-									}
-								} else {
-									return Err(syn::Error::new_spanned(
-										&assign_expr.right,
-										"level must be a string literal",
-									));
-								}
-							}
-							"annotation" => {
-								if let Expr::Lit(expr_lit) = &*assign_expr.right {
-									if let Lit::Str(lit_str) = &expr_lit.lit {
-										annotation = Some(lit_str.value());
-									} else {
-										return Err(syn::Error::new_spanned(
-											&assign_expr.right,
-											"annotation must be a string literal",
-										));
-									}
-								} else {
-									return Err(syn::Error::new_spanned(
-										&assign_expr.right,
-										"annotation must be a string literal",
-									));
-								}
-							}
-							_ => {
-								return Err(syn::Error::new_spanned(
-									&path_expr.path,
-									format!("Unknown citation attribute: {}", name),
-								));
-							}
-						}
-					} else {
-						return Err(syn::Error::new_spanned(
-							&assign_expr.left,
-							"Expected identifier",
-						));
-					}
-				} else {
-					return Err(syn::Error::new_spanned(&assign_expr.left, "Expected identifier"));
-				}
-			}
-
-			_ => {
-				return Err(syn::Error::new_spanned(arg, "Unsupported citation argument format"));
-			}
-		}
-	}
-
-	let source_expr = source_expr.ok_or_else(|| {
-		syn::Error::new(proc_macro2::Span::call_site(), "Missing source expression")
-	})?;
-
-	Ok(Citation { source_expr, reason, level, annotation, raw_args: Some(args_clone) })
 }
 
 /// Handle citation on a function
 fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_macro2::TokenStream {
 	// Generate validation code that runs at compile time
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 
 	// Insert the validation as a const block at the beginning of the function
 	let validation_stmt: syn::Stmt = parse_quote! {
@@ -527,7 +292,7 @@ fn handle_function_citation(citation: Citation, mut item_fn: ItemFn) -> proc_mac
 	item_fn.block.stmts.insert(0, validation_stmt);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_fn.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(&mut item_fn.attrs, &citation, warning_text);
 
 	quote! { #item_fn }
 }
@@ -537,14 +302,14 @@ fn handle_struct_citation(
 	citation: Citation,
 	mut item_struct: ItemStruct,
 ) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_struct.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(&mut item_struct.attrs, &citation, warning_text);
 
 	quote! {
 		#item_struct
@@ -558,14 +323,14 @@ fn handle_trait_citation(
 	citation: Citation,
 	mut item_trait: ItemTrait,
 ) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_trait.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(&mut item_trait.attrs, &citation, warning_text);
 
 	quote! {
 		#item_trait
@@ -576,7 +341,7 @@ fn handle_trait_citation(
 
 /// Handle citation on an impl block
 fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 
 	// Use counter for unique const name
 	let validation_const_name = syn::Ident::new(
@@ -585,7 +350,7 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_impl.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(&mut item_impl.attrs, &citation, warning_text);
 
 	quote! {
 		#item_impl
@@ -596,14 +361,14 @@ fn handle_impl_citation(citation: Citation, mut item_impl: ItemImpl) -> proc_mac
 
 /// Handle citation on a module
 fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
 		proc_macro2::Span::call_site(),
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_mod.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(&mut item_mod.attrs, &citation, warning_text);
 
 	quote! {
 		#item_mod
@@ -614,7 +379,7 @@ fn handle_mod_citation(citation: Citation, mut item_mod: ItemMod) -> proc_macro2
 
 /// Handle citation on an enum
 fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_macro2::TokenStream {
-	let (link_text, warning_text, validation_code) = generate_validation_code(&citation);
+	let (warning_text, validation_code) = generate_validation_code(&citation);
 
 	let validation_const_name = syn::Ident::new(
 		&format!("_CITE_VALIDATION_{}", next_validation_id()),
@@ -622,7 +387,7 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 	);
 
 	// Add citation footnote to doc comments
-	add_citation_footnote_to_item(&mut item_enum.attrs, &citation, link_text, warning_text);
+	documentation::add_citation_footnote_to_item(&mut item_enum.attrs, &citation, warning_text);
 
 	quote! {
 		#item_enum
@@ -631,514 +396,9 @@ fn handle_enum_citation(citation: Citation, mut item_enum: ItemEnum) -> proc_mac
 	}
 }
 
-/// Add citation footnote to doc comments
-fn add_citation_footnote_to_item(
-	attrs: &mut Vec<syn::Attribute>,
-	citation: &Citation,
-	link_text: Option<String>,
-	warning_text: String,
-) {
-	// Check if global formatting watermark already exists
-	let has_watermark = has_citation_watermark(attrs);
-
-	// Generate the complete footnote
-	let mut complete_footnote = String::new();
-
-	// Add global formatting only if watermark doesn't exist
-	if !has_watermark {
-		complete_footnote.push_str(&generate_global_citation_formatting());
-	}
-
-	// Add the specific citation footnote
-	complete_footnote.push_str(&generate_citation_footnote(citation, link_text, warning_text));
-
-	// Create a new doc comment attribute
-	let doc_attr = parse_quote! {
-		#[doc = #complete_footnote]
-	};
-
-	// Add it to the attributes
-	attrs.push(doc_attr);
-}
-
-/// Check if the global citation formatting watermark already exists in the attributes
-fn has_citation_watermark(attrs: &[syn::Attribute]) -> bool {
-	for attr in attrs {
-		if let syn::Meta::NameValue(name_value) = &attr.meta {
-			if name_value.path.is_ident("doc") {
-				if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit_str), .. }) =
-					&name_value.value
-				{
-					let doc_content = lit_str.value();
-					// Check for the citation watermark
-					if doc_content.contains(
-						"Cited with <a href=\"https://github.com/ramate-io/cite\">cite</a>",
-					) {
-						return true;
-					}
-				}
-			}
-		}
-	}
-	false
-}
-
-/// Generate the global citation formatting (badge and behavior hint)
-fn generate_global_citation_formatting() -> String {
-	let mut global_formatting = String::new();
-
-	// Add citation badge linking to the cite repo
-	global_formatting.push_str("## References\n\n");
-	global_formatting.push_str(
-		"\n\n<div style=\"background-color:#E6E6FA; border-left:4px solid #9370DB; padding:8px; font-weight:bold;\">\
-	Cited with <a href=\"https://github.com/ramate-io/cite\">cite</a>.\
-	</div>\n\n"
-	);
-
-	// Add behavior hint boxes
-	let behavior = cite_core::CitationBehavior::from_features();
-
-	// Global behavior
-	match behavior.global {
-		cite_core::CitationGlobal::Strict => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
-	This code uses strict citation validation.\
-	</div>\n\n",
-			);
-		}
-		cite_core::CitationGlobal::Lenient => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
-	This code uses lenient citation validation.\
-	</div>\n\n",
-			);
-		}
-	}
-
-	// Annotation behavior
-	match behavior.annotation {
-		cite_core::CitationAnnotation::Footnote => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
-	Annotations are required for citations.\
-	</div>\n\n",
-			);
-		}
-		cite_core::CitationAnnotation::Any => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
-	Annotations are optional for citations.\
-	</div>\n\n",
-			);
-		}
-	}
-
-	// Level behavior
-	match behavior.level {
-		cite_core::CitationLevel::Error => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#F0FFF0; border-left:4px solid #28A745; padding:8px;\">\
-	Citation validation errors will fail compilation.\
-	</div>\n\n",
-			);
-		}
-		cite_core::CitationLevel::Warn => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#FFFBE6; border-left:4px solid #FFC107; padding:8px;\">\
-	Citation validation issues will generate warnings.\
-	</div>\n\n",
-			);
-		}
-		cite_core::CitationLevel::Silent => {
-			global_formatting.push_str(
-				"\n\n<div style=\"background-color:#FFEBEE; border-left:4px solid #F44336; padding:8px;\">\
-	Citation validation issues will be silently ignored.\
-	</div>\n\n",
-			);
-		}
-	}
-
-	global_formatting
-}
-
-/// Generate citation footnote text
-fn generate_citation_footnote(
-	citation: &Citation,
-	link_text: Option<String>,
-	warning_text: String,
-) -> String {
-	let mut footnote = String::new();
-
-	// Use provided link text or generate fallback
-	let source_ref =
-		if let Some(link) = link_text { link } else { generate_source_reference(citation) };
-
-	// Add annotation and level modifiers
-	let mut modifiers = Vec::new();
-	if let Some(level) = &citation.level {
-		modifiers.push(format!("level={}", level.to_uppercase()));
-	}
-	if let Some(annotation) = &citation.annotation {
-		modifiers.push(format!("annotation={}", annotation.to_uppercase()));
-	}
-
-	// Build the enumerated footnote
-	footnote.push_str("\n1. ");
-	footnote.push_str(&source_ref);
-	if !modifiers.is_empty() {
-		footnote.push_str(&format!(" [{}]", modifiers.join(", ")));
-	}
-
-	// Add reason if provided
-	if let Some(reason) = &citation.reason {
-		// Handle multiline reasons by splitting and prefixing each line with tab
-		let formatted_reason =
-			reason.lines().map(|line| format!("\t{}", line)).collect::<Vec<_>>().join("\n");
-
-		footnote.push_str(&format!("\n\n{}", formatted_reason));
-	}
-
-	if !warning_text.is_empty() {
-		// Handle multiline warning text by splitting and prefixing each line with tab
-		let formatted_warning = warning_text
-			.lines()
-			.map(|line| format!("\t>{}", line))
-			.collect::<Vec<_>>()
-			.join("\n");
-
-		// warning box for warning text
-		footnote.push_str(&format!("\n\n\t**Warning!**\n\n{}", formatted_warning));
-	}
-
-	footnote
-}
-
-/// Generate source reference with hyperlink where applicable
-fn generate_source_reference(citation: &Citation) -> String {
-	// Try to extract source information from the citation
-	if let Some(args) = &citation.raw_args {
-		if !args.is_empty() {
-			// Check if this is a git source
-			if let Some(first_arg) = args.first() {
-				if let syn::Expr::Path(path_expr) = first_arg {
-					if path_expr.path.segments.len() == 1
-						&& path_expr.path.segments[0].ident == "git"
-					{
-						// Try to construct the GitSource and use its link method
-						if let Some(git_source) =
-							git::try_construct_git_source_from_citation_args(args)
-						{
-							return generate_git_source_reference(&git_source);
-						}
-						// Fallback to manual parsing if construction fails
-						return generate_git_source_reference_from_args_fallback(args);
-					} else if path_expr.path.segments.len() == 1
-						&& path_expr.path.segments[0].ident == "http"
-					{
-						return generate_http_source_reference(args);
-					} else if path_expr.path.segments.len() == 1
-						&& path_expr.path.segments[0].ident == "mock"
-					{
-						return generate_mock_source_reference(args);
-					}
-				}
-			}
-		}
-	}
-
-	// Fallback for unknown source types
-	"Unknown source".to_string()
-}
-
-/// Generate git source reference with hyperlink from macro arguments (fallback)
-fn generate_git_source_reference_from_args_fallback(args: &[syn::Expr]) -> String {
-	let mut remote = None;
-	let mut path = None;
-	let mut referenced_revision = None;
-	let mut name = None;
-
-	// Extract git source parameters
-	for arg in args {
-		if let syn::Expr::Assign(assign_expr) = arg {
-			if let syn::Expr::Path(left_path) = &*assign_expr.left {
-				if left_path.path.segments.len() == 1 {
-					let param_name = &left_path.path.segments[0].ident.to_string();
-
-					match param_name.as_str() {
-						"remote" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								remote = Some(lit_str.value());
-							}
-						}
-						"path" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								path = Some(lit_str.value());
-							}
-						}
-						"referenced_revision" | "ref_rev" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								referenced_revision = Some(lit_str.value());
-							}
-						}
-						"name" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								name = Some(lit_str.value());
-							}
-						}
-						_ => {}
-					}
-				}
-			}
-		}
-	}
-
-	// Build the reference
-	if let (Some(remote_url), Some(file_path), Some(rev)) = (remote, path, referenced_revision) {
-		// Use the provided name as link text if available, otherwise use default format
-		let link_text = if let Some(custom_name) = name {
-			custom_name
-		} else {
-			let short_rev = if rev.len() > 8 { &rev[..8] } else { &rev };
-			format!("Git: {} @ {}", file_path, short_rev)
-		};
-
-		// Try to create a hyperlink for GitHub URLs
-		if remote_url.contains("github.com") {
-			// Extract owner/repo from GitHub URL
-			if let Some(_repo_part) = remote_url.split("github.com/").nth(1) {
-				return format!(
-					"[{}]({}/blob/{}/{}#L1)",
-					link_text,
-					remote_url.trim_end_matches(".git"),
-					rev,
-					file_path
-				);
-			}
-		}
-
-		// Fallback for non-GitHub URLs
-		format!("{} ({})", link_text, remote_url)
-	} else {
-		"Git source (incomplete parameters)".to_string()
-	}
-}
-
-/// Generate git source reference with hyperlink using GitSource
-fn generate_git_source_reference(git_source: &cite_git::GitSource) -> String {
-	use cite_core::Source;
-
-	let name = git_source.name();
-	let url = git_source.link();
-
-	// Format as [name](url)
-	format!("**[{}]({})**", name, url)
-}
-
-/// Generate HTTP source reference with hyperlink from source object
-fn generate_http_source_reference_from_source(http_source: &cite_http::HttpMatch) -> String {
-	use cite_core::Source;
-
-	let url = http_source.source_url.as_str();
-	let link_text = http_source.link();
-
-	format!("**[{}]({})**", link_text, url)
-}
-
-/// Generate HTTP source reference with hyperlink from macro arguments
-fn generate_http_source_reference(args: &[syn::Expr]) -> String {
-	let mut url = None;
-	let mut pattern = None;
-	let mut selector = None;
-
-	// Extract HTTP source parameters
-	for arg in args {
-		if let syn::Expr::Assign(assign_expr) = arg {
-			if let syn::Expr::Path(left_path) = &*assign_expr.left {
-				if left_path.path.segments.len() == 1 {
-					let name = &left_path.path.segments[0].ident.to_string();
-
-					match name.as_str() {
-						"url" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								url = Some(lit_str.value());
-							}
-						}
-						"pattern" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								pattern = Some(lit_str.value());
-							}
-						}
-						"selector" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								selector = Some(lit_str.value());
-							}
-						}
-						_ => {}
-					}
-				}
-			}
-		}
-	}
-
-	// Build the reference
-	if let Some(url_str) = url {
-		let extraction_method = if pattern.is_some() {
-			"regex pattern"
-		} else if selector.is_some() {
-			"CSS selector"
-		} else {
-			"full content"
-		};
-
-		return format!("[HTTP: {}]({})", extraction_method, url_str);
-	} else {
-		"HTTP source (incomplete parameters)".to_string()
-	}
-}
-
-/// Generate mock source reference from source object
-fn generate_mock_source_reference_from_source(mock_source: &cite_core::mock::MockSource) -> String {
-	use cite_core::Source;
-
-	let link_text = mock_source.link();
-	format!("[{}](https://github.com/ramate-io/cite#mock-sources)", link_text)
-}
-
-/// Generate mock source reference from macro arguments
-fn generate_mock_source_reference(args: &[syn::Expr]) -> String {
-	let mut same = None;
-	let mut changed = None;
-
-	// Extract mock source parameters
-	for arg in args {
-		if let syn::Expr::Assign(assign_expr) = arg {
-			if let syn::Expr::Path(left_path) = &*assign_expr.left {
-				if left_path.path.segments.len() == 1 {
-					let name = &left_path.path.segments[0].ident.to_string();
-
-					match name.as_str() {
-						"same" => {
-							if let syn::Expr::Lit(syn::ExprLit {
-								lit: syn::Lit::Str(lit_str),
-								..
-							}) = &*assign_expr.right
-							{
-								same = Some(lit_str.value());
-							}
-						}
-						"changed" => {
-							// Handle tuple syntax for changed
-							if let syn::Expr::Tuple(tuple_expr) = &*assign_expr.right {
-								if tuple_expr.elems.len() == 2 {
-									if let (Some(old), Some(new)) =
-										(tuple_expr.elems.first(), tuple_expr.elems.get(1))
-									{
-										if let (
-											syn::Expr::Lit(syn::ExprLit {
-												lit: syn::Lit::Str(old_lit),
-												..
-											}),
-											syn::Expr::Lit(syn::ExprLit {
-												lit: syn::Lit::Str(new_lit),
-												..
-											}),
-										) = (old, new)
-										{
-											changed = Some((old_lit.value(), new_lit.value()));
-										}
-									}
-								}
-							}
-						}
-						_ => {}
-					}
-				}
-			}
-		}
-	}
-
-	// Build the reference
-	if let Some(content) = same {
-		let preview = if content.len() > 50 { format!("{}...", &content[..50]) } else { content };
-		format!("[Mock: same = \"{}\"](https://github.com/ramate-io/cite#mock-sources)", preview)
-	} else if let Some((old, new)) = changed {
-		let old_preview = if old.len() > 30 { format!("{}...", &old[..30]) } else { old };
-		let new_preview = if new.len() > 30 { format!("{}...", &new[..30]) } else { new };
-		format!(
-			"[Mock: changed = (\"{}\", \"{}\")](https://github.com/ramate-io/cite#mock-sources)",
-			old_preview, new_preview
-		)
-	} else {
-		"[Mock source (incomplete parameters)](https://github.com/ramate-io/cite#mock-sources)"
-			.to_string()
-	}
-}
-
-/// Construct a source from citation arguments and return its link text
-fn construct_source_from_citation(citation: &Citation) -> Option<String> {
-	if let Some(args) = &citation.raw_args {
-		if !args.is_empty() {
-			// Try Git sources first (since git is the most common)
-			if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
-				return Some(generate_git_source_reference(&git_source));
-			}
-
-			// Try HTTP sources
-			if let Some(http_source) = http::try_construct_http_source_from_citation_args(args) {
-				return Some(generate_http_source_reference_from_source(&http_source));
-			}
-
-			// Try mock sources
-			if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
-				return Some(generate_mock_source_reference_from_source(&mock_source));
-			}
-		}
-	}
-
-	// Try to construct and execute MockSource using the traditional expression parsing
-	if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
-		return Some(generate_mock_source_reference_from_source(&mock_source));
-	}
-
-	None
-}
-
 /// Generate validation code that executes the user's source expression with the real API
-/// Returns (link_text, warning_text, validation_code)
-fn generate_validation_code(
-	citation: &Citation,
-) -> (Option<String>, String, proc_macro2::TokenStream) {
-	// Try to construct the source first
-	let link_text = construct_source_from_citation(citation);
+/// Returns (warning_text, validation_code)
+fn generate_validation_code(citation: &Citation) -> (String, proc_macro2::TokenStream) {
 	let source_expr = &citation.source_expr;
 
 	let reason_comment = if let Some(_reason) = &citation.reason {
@@ -1241,7 +501,7 @@ fn generate_validation_code(
 		}
 	};
 
-	(link_text, warning_text, validation_code)
+	(warning_text, validation_code)
 }
 
 /// Attempt to perform validation during macro expansion
@@ -1272,7 +532,9 @@ fn attempt_macro_expansion_validation(
 	let annotation_result = annotation::check_annotation_requirements(citation, &behavior)?;
 
 	// Try to handle common source patterns
-	if let Some(result) = try_execute_source_expression(citation, &behavior, level_override) {
+	if let Some(result) =
+		validation::try_execute_source_expression(citation, &behavior, level_override)
+	{
 		return match (result, annotation_result) {
 			// if also an annotation result, join them together
 			(Ok(Some(result)), Some(annotation_result)) => {
@@ -1288,185 +550,4 @@ fn attempt_macro_expansion_validation(
 	// If we can't execute the source during macro expansion, assume it's valid
 	// The user can always add explicit validation later
 	Ok(None)
-}
-
-/// Try to execute source expressions that we can handle during macro expansion
-fn try_execute_source_expression(
-	citation: &Citation,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	// Check if this uses keyword syntax by looking for the keyword_syntax marker
-	if let Expr::Path(path_expr) = &citation.source_expr {
-		if path_expr.path.segments.len() == 1
-			&& path_expr.path.segments[0].ident == "keyword_syntax"
-		{
-			// Use keyword syntax parsing - try all source types
-			if let Some(args) = &citation.raw_args {
-				// Try mock sources first
-				if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args)
-				{
-					return execute_mock_source_validation(mock_source, behavior, level_override);
-				}
-
-				// Try HTTP sources
-				if let Some(http_source) = http::try_construct_http_source_from_citation_args(args)
-				{
-					return execute_http_source_validation(http_source, behavior, level_override);
-				}
-
-				// Try Git sources
-				if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
-					return execute_git_source_validation(git_source, behavior, level_override);
-				}
-			}
-		}
-	}
-
-	// Check if this uses the new syntax where the source type is the first argument
-	if let Some(args) = &citation.raw_args {
-		if !args.is_empty() {
-			// Try Git sources first (since git is the most common)
-			if let Some(git_source) = git::try_construct_git_source_from_citation_args(args) {
-				return execute_git_source_validation(git_source, behavior, level_override);
-			}
-
-			// Try HTTP sources
-			if let Some(http_source) = http::try_construct_http_source_from_citation_args(args) {
-				return execute_http_source_validation(http_source, behavior, level_override);
-			}
-
-			// Try mock sources
-			if let Some(mock_source) = mock::try_construct_mock_source_from_citation_args(args) {
-				return execute_mock_source_validation(mock_source, behavior, level_override);
-			}
-		}
-	}
-
-	// Try to construct and execute MockSource using the traditional expression parsing
-	if let Some(mock_source) = mock::try_construct_mock_source_from_expr(&citation.source_expr) {
-		return execute_mock_source_validation(mock_source, behavior, level_override);
-	}
-
-	// Add support for other source types here as needed
-	None
-}
-
-/// Execute mock source validation and return the result
-fn execute_mock_source_validation(
-	mock_source: cite_core::mock::MockSource,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// Execute the real API!
-	match mock_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = format!(
-					"Citation content has changed!\n         Referenced: {}\n         Current: {}",
-					comparison.referenced().0,
-					comparison.current().0
-				);
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("Citation source error: {:?}", e))),
-	}
-}
-
-/// Execute HTTP source validation and return the result
-fn execute_http_source_validation(
-	http_source: cite_http::HttpMatch,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// HTTP sources now handle caching internally
-	match http_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
-					format!(
-						"HTTP citation content has changed!\n         URL: {}\n{}",
-						comparison.current().source_url.as_str(),
-						unified_diff
-					)
-				} else {
-					format!(
-                        "HTTP citation content has changed!\n         URL: {}\n         Current: {}\n         Referenced: {}",
-                        comparison.current().source_url.as_str(),
-                        comparison.current().content,
-                        comparison.referenced().content
-                    )
-				};
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("HTTP citation source error: {:?}", e))),
-	}
-}
-
-/// Execute Git source validation and return the result
-fn execute_git_source_validation(
-	git_source: cite_git::GitSource,
-	behavior: &cite_core::CitationBehavior,
-	level_override: Option<cite_core::CitationLevel>,
-) -> Option<std::result::Result<Option<String>, String>> {
-	use cite_core::Source;
-
-	// Git sources handle git operations internally
-	match git_source.get() {
-		Ok(comparison) => {
-			let result = comparison.validate(behavior, level_override);
-
-			if !result.is_valid() {
-				let diff_msg = if let Some(unified_diff) = comparison.diff().unified_diff() {
-					format!(
-						"Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}\n{}",
-						comparison.current().remote,
-						comparison.current().path_pattern.path,
-						comparison.current().revision,
-						unified_diff
-					)
-				} else {
-					format!(
-                        "Git citation content has changed!\n         Remote: {}\n         Path: {}\n         Revision: {}",
-                        comparison.current().remote,
-                        comparison.current().path_pattern.path,
-                        comparison.current().revision
-                    )
-				};
-
-				if result.should_fail_compilation() {
-					return Some(Err(diff_msg));
-				} else if result.should_report() {
-					return Some(Ok(Some(diff_msg)));
-				}
-			}
-
-			Some(Ok(None))
-		}
-		Err(e) => Some(Err(format!("Git citation source error: {:?}", e))),
-	}
 }

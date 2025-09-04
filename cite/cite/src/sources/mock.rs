@@ -38,26 +38,35 @@
 //! This separation allows the parsing logic to focus on syntax while delegating
 //! the actual mock source creation to the core library.
 
-use syn::Expr;
 use cite_core::mock::MockSource;
 
-mod macro_syntax;
-
-/// Try to construct a MockSource from the citation expression using various syntax patterns
-/// 
-/// This function handles parsing of MockSource constructor expressions and creates
-/// the appropriate MockSource during macro expansion.
-pub fn try_construct_mock_source_from_expr(_expr: &Expr) -> Option<MockSource> {
-    // This function is now deprecated in favor of try_construct_mock_source_from_citation_args
-    // but kept for backwards compatibility with any remaining direct expression parsing
-    None
-}
-
-/// Try to construct a MockSource from citation arguments using keyword syntax
-/// 
+/// Try to construct a MockSource from kwargs
+///
 /// Supports syntax like:
-/// - `mock, same = "content"`  
-/// - `mock, changed = ("old", "new")`
-pub fn try_construct_mock_source_from_citation_args(args: &[Expr]) -> Option<MockSource> {
-    macro_syntax::try_parse_from_citation_args(args)
+/// - `same = "content"` -> MockSource::same(content)
+/// - `changed = ["old", "new"]` -> MockSource::changed(old, new)
+pub fn try_get_mock_source_from_kwargs(
+	kwargs: &std::collections::HashMap<String, serde_json::Value>,
+) -> Result<MockSource, String> {
+	let same = kwargs.get("same").and_then(|v| v.as_str());
+	let changed = kwargs.get("changed");
+
+	if let Some(content) = same {
+		Ok(MockSource::same(content.to_string()))
+	} else if let Some(changed_val) = changed {
+		// Parse the changed tuple from JSON array
+		if let Some(changed_array) = changed_val.as_array() {
+			if changed_array.len() == 2 {
+				let old = changed_array[0].as_str().unwrap_or("").to_string();
+				let new = changed_array[1].as_str().unwrap_or("").to_string();
+				Ok(MockSource::changed(old, new))
+			} else {
+				Err("changed parameter must be a tuple of two strings".to_string())
+			}
+		} else {
+			Err("changed parameter must be a tuple of two strings".to_string())
+		}
+	} else {
+		Err("mock source requires either 'same' or 'changed' parameter".to_string())
+	}
 }

@@ -1,5 +1,5 @@
 [package]
-name = "cite"
+name = "helper-macro-git"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -17,20 +17,6 @@ syn = { workspace = true }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 serde_json = { workspace = true }
-cite-cache = { workspace = true }
-cite-core = { workspace = true }
-cite-http = { workspace = true }
-cite-git = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
-
-[features]
-default = []
-annotationless = ["cite-core/annotationless"]
-warn = ["cite-core/warn"]
-silent = ["cite-core/silent"]
-lenient = ["cite-core/lenient"]
 
 [lints]
 workspace = true
