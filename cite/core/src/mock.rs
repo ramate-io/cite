@@ -50,7 +50,7 @@ impl Current<ReferencedString, StringDiff> for CurrentString {
 }
 
 /// Mock source for testing - compares a static "referenced" string with a "current" string
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MockSource {
 	pub id: Id,
 	pub referenced_content: String,

@@ -114,12 +114,19 @@
 
 pub mod behavior;
 pub mod id;
+pub mod macro_ergonomics;
 pub mod mock;
 pub mod ui;
 
 pub use behavior::{CitationAnnotation, CitationBehavior, CitationGlobal, CitationLevel};
 pub use id::Id;
+pub use macro_ergonomics::{
+	create_kwargs_from_params, create_standard_json_from_kwargs, generate_doc_attr_string,
+	generate_source_doc_attr, parse_kwargs_from_json, validate_required_params, MacroError,
+	MacroResult,
+};
 pub use mock::{mock_source_changed, mock_source_same, MockSource};
+pub use ui::{AboveDocAttr, SourceUi, SourceUiError};
 
 /// Errors thrown by the [Source].
 #[derive(Debug, thiserror::Error)]

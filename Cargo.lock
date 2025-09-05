@@ -185,7 +185,6 @@ dependencies = [
 name = "cite"
 version = "0.0.1"
 dependencies = [
- "cite-cache",
  "cite-core",
  "cite-git",
  "cite-http",
@@ -265,6 +264,7 @@ dependencies = [
  "glob",
  "regex",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 1.0.69",
 ]
@@ -652,6 +652,8 @@ checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 name = "helper-macro-git"
 version = "0.0.1"
 dependencies = [
+ "cite-core",
+ "cite-git",
  "proc-macro2",
  "quote",
  "serde_json",

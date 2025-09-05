@@ -39,34 +39,20 @@
 //! the actual mock source creation to the core library.
 
 use cite_core::mock::MockSource;
+use cite_core::ui::SourceUi;
+use std::collections::HashMap;
+use serde_json::Value;
 
-/// Try to construct a MockSource from kwargs
+/// Try to construct a MockSource from kwargs using the SourceUi trait
 ///
 /// Supports syntax like:
-/// - `same = "content"` -> MockSource::same(content)
-/// - `changed = ["old", "new"]` -> MockSource::changed(old, new)
+/// - `referenced = "content"` -> MockSource::same(content) (current defaults to referenced)
+/// - `referenced = "old", current = "new"` -> MockSource::changed(old, new)
+/// - `same = "content"` -> MockSource::same(content) (legacy syntax)
+/// - `changed = ["old", "new"]` -> MockSource::changed(old, new) (legacy syntax)
 pub fn try_get_mock_source_from_kwargs(
-	kwargs: &std::collections::HashMap<String, serde_json::Value>,
+	kwargs: &HashMap<String, Value>,
 ) -> Result<MockSource, String> {
-	let same = kwargs.get("same").and_then(|v| v.as_str());
-	let changed = kwargs.get("changed");
-
-	if let Some(content) = same {
-		Ok(MockSource::same(content.to_string()))
-	} else if let Some(changed_val) = changed {
-		// Parse the changed tuple from JSON array
-		if let Some(changed_array) = changed_val.as_array() {
-			if changed_array.len() == 2 {
-				let old = changed_array[0].as_str().unwrap_or("").to_string();
-				let new = changed_array[1].as_str().unwrap_or("").to_string();
-				Ok(MockSource::changed(old, new))
-			} else {
-				Err("changed parameter must be a tuple of two strings".to_string())
-			}
-		} else {
-			Err("changed parameter must be a tuple of two strings".to_string())
-		}
-	} else {
-		Err("mock source requires either 'same' or 'changed' parameter".to_string())
-	}
+	MockSource::from_kwarg_json(kwargs)
+		.map_err(|e| format!("Failed to create Mock source: {}", e))
 }
