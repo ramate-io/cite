@@ -26,9 +26,9 @@ members = [
 version = "0.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-authors = ["Movement Labs"]
-repository = "www.github.com/movementlabsxyz/ffs"
-homepage = "www.github.com/movementlabsxyz/ffs"
+authors = ["Liam Monninger", "Ramage LLC"]
+repository = "www.github.com/ramate-io/cite"
+homepage = "www.github.com/ramate-io/cite"
 publish = false
 rust-version = "1.85.0"
 

@@ -1,3 +1,8 @@
+use crate::sources::{git, http, mock};
+use cite_core::ui::SourceUi;
+use cite_core::MockSource;
+use cite_git::GitSource;
+use cite_http::HttpMatch;
 use syn::Result;
 
 /// Find the span of a specific parameter in the args
@@ -15,6 +20,83 @@ fn find_param_span(args: &[syn::Expr], param_name: &str) -> proc_macro2::Span {
 		}
 	}
 	proc_macro2::Span::call_site()
+}
+
+/// Check if a key is a top-level citation field (always valid)
+fn is_citation_level_field(key: &str) -> bool {
+	matches!(key, "src" | "reason" | "level" | "annotation")
+}
+
+/// Validate kwargs for git source and check for invalid attributes
+fn validate_git_kwargs(
+	kwargs: &std::collections::HashMap<String, serde_json::Value>,
+	args: &[syn::Expr],
+) -> Result<()> {
+	// First try to construct the source to validate required fields
+	git::try_get_git_source_from_kwargs(kwargs)
+		.map_err(|e| syn::Error::new(proc_macro2::Span::call_site(), e))?;
+
+	// Then check for invalid attributes
+	for key in kwargs.keys() {
+		if !is_citation_level_field(key)
+			&& !<GitSource as SourceUi<_, _, _>>::is_valid_attr_key(key)
+		{
+			return Err(syn::Error::new(
+				find_param_span(args, key),
+				format!("Unknown citation attribute: {}", key),
+			));
+		}
+	}
+
+	Ok(())
+}
+
+/// Validate kwargs for http source and check for invalid attributes
+fn validate_http_kwargs(
+	kwargs: &std::collections::HashMap<String, serde_json::Value>,
+	args: &[syn::Expr],
+) -> Result<()> {
+	// First try to construct the source to validate required fields
+	http::try_get_http_source_from_kwargs(kwargs)
+		.map_err(|e| syn::Error::new(proc_macro2::Span::call_site(), e))?;
+
+	// Then check for invalid attributes
+	for key in kwargs.keys() {
+		if !is_citation_level_field(key)
+			&& !<HttpMatch as SourceUi<_, _, _>>::is_valid_attr_key(key)
+		{
+			return Err(syn::Error::new(
+				find_param_span(args, key),
+				format!("Unknown citation attribute: {}", key),
+			));
+		}
+	}
+
+	Ok(())
+}
+
+/// Validate kwargs for mock source and check for invalid attributes
+fn validate_mock_kwargs(
+	kwargs: &std::collections::HashMap<String, serde_json::Value>,
+	args: &[syn::Expr],
+) -> Result<()> {
+	// First try to construct the source to validate required fields
+	mock::try_get_mock_source_from_kwargs(kwargs)
+		.map_err(|e| syn::Error::new(proc_macro2::Span::call_site(), e))?;
+
+	// Then check for invalid attributes
+	for key in kwargs.keys() {
+		if !is_citation_level_field(key)
+			&& !<MockSource as SourceUi<_, _, _>>::is_valid_attr_key(key)
+		{
+			return Err(syn::Error::new(
+				find_param_span(args, key),
+				format!("Unknown citation attribute: {}", key),
+			));
+		}
+	}
+
+	Ok(())
 }
 
 /// Validate kwargs and create citation
@@ -35,120 +117,11 @@ pub fn validate_with_kwargs(
 	let level = kwargs.get("level").and_then(|v| v.as_str()).map(|s| s.to_string());
 	let annotation = kwargs.get("annotation").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-	// Validate source-specific parameters and check for invalid kwargs
+	// Validate source-specific parameters using helper functions
 	match src_str.as_str() {
-		"git" => {
-			// Define valid git source parameters
-			let valid_params = [
-				"src",
-				"remote",
-				"ref_rev",
-				"cur_rev",
-				"path",
-				"name",
-				"reason",
-				"level",
-				"annotation",
-			];
-
-			// Validate required git source parameters
-			kwargs.get("remote").and_then(|v| v.as_str()).ok_or_else(|| {
-				syn::Error::new(
-					proc_macro2::Span::call_site(),
-					"git source requires 'remote = \"...\"'",
-				)
-			})?;
-			kwargs.get("ref_rev").and_then(|v| v.as_str()).ok_or_else(|| {
-				syn::Error::new(
-					proc_macro2::Span::call_site(),
-					"git source requires 'ref_rev = \"...\"'",
-				)
-			})?;
-			kwargs.get("cur_rev").and_then(|v| v.as_str()).ok_or_else(|| {
-				syn::Error::new(
-					proc_macro2::Span::call_site(),
-					"git source requires 'cur_rev = \"...\"'",
-				)
-			})?;
-			kwargs.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
-				syn::Error::new(
-					proc_macro2::Span::call_site(),
-					"git source requires 'path = \"...\"'",
-				)
-			})?;
-
-			// Check for invalid kwargs
-			let invalid_params: Vec<_> =
-				kwargs.keys().filter(|key| !valid_params.contains(&key.as_str())).collect();
-
-			if !invalid_params.is_empty() {
-				let invalid_param = &invalid_params[0];
-				return Err(syn::Error::new(
-					find_param_span(args, invalid_param),
-					format!("Unknown citation attribute: {}", invalid_param),
-				));
-			}
-		}
-		"http" => {
-			// Define valid http source parameters
-			let valid_params = [
-				"src",
-				"url",
-				"pattern",
-				"selector",
-				"match_type",
-				"fragment",
-				"reason",
-				"level",
-				"annotation",
-			];
-
-			// Validate required http source parameters
-			kwargs.get("url").and_then(|v| v.as_str()).ok_or_else(|| {
-				syn::Error::new(
-					proc_macro2::Span::call_site(),
-					"http source requires 'url = \"...\"'",
-				)
-			})?;
-
-			// Check for invalid kwargs
-			let invalid_params: Vec<_> =
-				kwargs.keys().filter(|key| !valid_params.contains(&key.as_str())).collect();
-
-			if !invalid_params.is_empty() {
-				let invalid_param = &invalid_params[0];
-				return Err(syn::Error::new(
-					find_param_span(args, invalid_param),
-					format!("Unknown citation attribute: {}", invalid_param),
-				));
-			}
-		}
-		"mock" => {
-			// Define valid mock source parameters
-			let valid_params = ["src", "same", "changed", "reason", "level", "annotation"];
-
-			// Validate mock source parameters
-			let same = kwargs.get("same").and_then(|v| v.as_str());
-			let changed = kwargs.get("changed");
-			if same.is_none() && changed.is_none() {
-				return Err(syn::Error::new(
-					proc_macro2::Span::call_site(),
-					"mock source requires 'same = \"...\"' or 'changed = (\"old\", \"new\")'",
-				));
-			}
-
-			// Check for invalid kwargs
-			let invalid_params: Vec<_> =
-				kwargs.keys().filter(|key| !valid_params.contains(&key.as_str())).collect();
-
-			if !invalid_params.is_empty() {
-				let invalid_param = &invalid_params[0];
-				return Err(syn::Error::new(
-					find_param_span(args, invalid_param),
-					format!("Unknown citation attribute: {}", invalid_param),
-				));
-			}
-		}
+		"git" => validate_git_kwargs(kwargs, args)?,
+		"http" => validate_http_kwargs(kwargs, args)?,
+		"mock" => validate_mock_kwargs(kwargs, args)?,
 		_ => {
 			return Err(syn::Error::new(
 				proc_macro2::Span::call_site(),

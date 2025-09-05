@@ -7,7 +7,7 @@ use helper_macro_git::helper_macro_git;
 #[cite(
 	above,
 	reason = "Testing git source 2",
-	ref_rev = "41b038e2dcd66b710ccfa2fd3be56426a9625a67"
+	referenced_revision = "41b038e2dcd66b710ccfa2fd3be56426a9625a67"
 )]
 pub fn test_git_source() {
 	println!(

@@ -1,9 +1,10 @@
 use crate::GitSourceError;
 use git2::{FetchOptions, RemoteCallbacks, Repository};
 use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
 
 /// Builder for fetching and preparing git repositories
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RepositoryBuilder {
 	remote_url: String,
 	parent_dir: Option<PathBuf>,

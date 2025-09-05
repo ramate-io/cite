@@ -22,7 +22,7 @@ error: Git citation content has changed!
 7  | / #[cite(
 8  | |     above,
 9  | |     reason = "Testing git source 2",
-10 | |     ref_rev = "41b038e2dcd66b710ccfa2fd3be56426a9625a67"
+10 | |     referenced_revision = "41b038e2dcd66b710ccfa2fd3be56426a9625a67"
 11 | | )]
    | |__^
    |

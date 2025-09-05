@@ -1,3 +1,4 @@
+pub mod ui;
 pub mod line_range;
 pub mod repository_manager;
 
@@ -120,7 +121,6 @@ pub struct GitSource {
 	/// The formatted URL for documentation links
 	pub formatted_url: String,
 	/// Repository builder for handling remote repository operations
-	#[serde(skip)]
 	repository_builder: RepositoryBuilder,
 }
 

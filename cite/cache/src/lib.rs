@@ -1,5 +1,6 @@
 use cite_core::id::Id;
 use cite_core::{Comparison, Current, Diff, Referenced, Source, SourceError};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// A cachable reference is serializable and deserializable
@@ -23,7 +24,7 @@ pub enum CacheBuilderError {
 	CreateCacheDir(#[source] std::io::Error),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheBuilder {
 	pub cite_dir: PathBuf,
 	pub cache_subdir: PathBuf,
@@ -86,12 +87,12 @@ pub enum CacheError {
 	SourceError(#[source] SourceError),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cache {
 	builder: CacheBuilder,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CacheBehavior {
 	Enabled,
 	Ignored,

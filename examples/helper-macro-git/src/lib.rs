@@ -1,3 +1,5 @@
+use cite_core::ui::SourceUi;
+use cite_git::GitSource;
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, Expr, Lit, Result};
 
@@ -15,20 +17,19 @@ pub fn helper_macro_git(args: TokenStream, input: TokenStream) -> TokenStream {
 	// Parse the input item
 	let mut item = parse_macro_input!(input as syn::Item);
 
-	// Add the doc comment with the cite above content as JSON
-	let json_data = serde_json::json!({
-		"src": "git",
-		"remote": "https://github.com/ramate-io/cite",
-		"ref_rev": "83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
-		"cur_rev": "83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
-		"path": format!("tests/helper-macro-git/helper-macro-git/DOC_{}.md", doc_num)
-	});
+	// Create the actual GitSource directly
+	let git_source = GitSource::try_new(
+		"https://github.com/ramate-io/cite",
+		&format!("tests/helper-macro-git/helper-macro-git/DOC_{}.md", doc_num),
+		"83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
+		"83e6dc0fb4d357c87a89afa7b22c4a62aad0b41",
+		None,
+	)
+	.expect("Failed to create GitSource");
 
-	// this syntax allows this to (1) be escaped, (2) be invisible to cargo doc, and (3) be invisible to rust analyzer
-	let doc_comment = format!(
-		"<div style=\"display: none;\"><cite above content [{}] end_content/></div>",
-		serde_json::to_string_pretty(&json_data).unwrap()
-	);
+	// Use the SourceUi trait to generate the doc attribute
+	let doc_attr = git_source.to_above_doc_attr().expect("Failed to generate doc attribute");
+	let doc_comment = doc_attr.to_doc_attr_string();
 
 	// Add the doc attribute to the item
 	add_doc_attribute(&mut item, &doc_comment);
