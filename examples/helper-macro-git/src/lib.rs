@@ -1,8 +1,6 @@
-use cite_core::ui::{AboveDocAttr, SourceUi, SourceUiError};
+use cite_core::ui::SourceUi;
 use cite_git::GitSource;
 use proc_macro::TokenStream;
-use serde_json::json;
-use std::collections::HashMap;
 use syn::{parse_macro_input, Expr, Lit, Result};
 
 #[proc_macro_attribute]

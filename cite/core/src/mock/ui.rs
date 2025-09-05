@@ -5,12 +5,17 @@ use std::collections::HashMap;
 
 impl SourceUi<ReferencedString, CurrentString, StringDiff> for MockSource {
 	fn from_kwarg_json(kwargs: &HashMap<String, Value>) -> Result<Self, SourceUiError> {
-		// First, try direct deserialization from the kwargs
+		// Check if this is legacy syntax first
+		if kwargs.contains_key("same") || kwargs.contains_key("changed") {
+			return Self::try_legacy_syntax(kwargs);
+		}
+
+		// Try direct deserialization from the kwargs
 		if let Ok(source) = Self::try_direct_deserialization(kwargs) {
 			return Ok(source);
 		}
 
-		// If direct deserialization fails, try legacy syntax patterns
+		// If direct deserialization fails, try legacy syntax patterns as fallback
 		Self::try_legacy_syntax(kwargs)
 	}
 
@@ -55,27 +60,7 @@ impl MockSource {
 
 	/// Try legacy syntax patterns for backward compatibility
 	fn try_legacy_syntax(kwargs: &HashMap<String, Value>) -> Result<Self, SourceUiError> {
-		// Extract required parameters - support both new and legacy syntax
-		let referenced = kwargs
-			.get("referenced")
-			.or_else(|| kwargs.get("referenced_content"))
-			.or_else(|| kwargs.get("same")) // Legacy support
-			.and_then(|v| v.as_str())
-			.ok_or_else(|| {
-				SourceUiError::MissingParameter(
-					"referenced, referenced_content, or same".to_string(),
-				)
-			})?
-			.to_string();
-
-		let current = kwargs
-			.get("current")
-			.or_else(|| kwargs.get("current_content"))
-			.and_then(|v| v.as_str())
-			.map(|s| s.to_string())
-			.unwrap_or_else(|| referenced.clone());
-
-		// Handle legacy "changed" syntax
+		// Handle legacy "changed" syntax first
 		let (referenced_content, current_content) = if let Some(changed_val) = kwargs.get("changed")
 		{
 			// Parse the changed tuple from JSON array (legacy syntax)
@@ -95,6 +80,26 @@ impl MockSource {
 				));
 			}
 		} else {
+			// Extract required parameters - support both new and legacy syntax
+			let referenced = kwargs
+				.get("referenced")
+				.or_else(|| kwargs.get("referenced_content"))
+				.or_else(|| kwargs.get("same")) // Legacy support
+				.and_then(|v| v.as_str())
+				.ok_or_else(|| {
+					SourceUiError::MissingParameter(
+						"referenced, referenced_content, same, or changed".to_string(),
+					)
+				})?
+				.to_string();
+
+			let current = kwargs
+				.get("current")
+				.or_else(|| kwargs.get("current_content"))
+				.and_then(|v| v.as_str())
+				.map(|s| s.to_string())
+				.unwrap_or_else(|| referenced.clone());
+
 			(referenced, current)
 		};
 
