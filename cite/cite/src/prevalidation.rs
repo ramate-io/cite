@@ -1,8 +1,8 @@
 use crate::sources::{git, http, mock};
 use cite_core::ui::SourceUi;
+use cite_core::MockSource;
 use cite_git::GitSource;
 use cite_http::HttpMatch;
-use cite_core::MockSource;
 use syn::Result;
 
 /// Find the span of a specific parameter in the args
@@ -38,7 +38,9 @@ fn validate_git_kwargs(
 
 	// Then check for invalid attributes
 	for key in kwargs.keys() {
-		if !is_citation_level_field(key) && !<GitSource as SourceUi<_, _, _>>::is_valid_attr_key(key) {
+		if !is_citation_level_field(key)
+			&& !<GitSource as SourceUi<_, _, _>>::is_valid_attr_key(key)
+		{
 			return Err(syn::Error::new(
 				find_param_span(args, key),
 				format!("Unknown citation attribute: {}", key),
@@ -60,7 +62,9 @@ fn validate_http_kwargs(
 
 	// Then check for invalid attributes
 	for key in kwargs.keys() {
-		if !is_citation_level_field(key) && !<HttpMatch as SourceUi<_, _, _>>::is_valid_attr_key(key) {
+		if !is_citation_level_field(key)
+			&& !<HttpMatch as SourceUi<_, _, _>>::is_valid_attr_key(key)
+		{
 			return Err(syn::Error::new(
 				find_param_span(args, key),
 				format!("Unknown citation attribute: {}", key),
@@ -82,7 +86,9 @@ fn validate_mock_kwargs(
 
 	// Then check for invalid attributes
 	for key in kwargs.keys() {
-		if !is_citation_level_field(key) && !<MockSource as SourceUi<_, _, _>>::is_valid_attr_key(key) {
+		if !is_citation_level_field(key)
+			&& !<MockSource as SourceUi<_, _, _>>::is_valid_attr_key(key)
+		{
 			return Err(syn::Error::new(
 				find_param_span(args, key),
 				format!("Unknown citation attribute: {}", key),

@@ -1,4 +1,4 @@
-error: http source requires 'url = "..."'
+error: Failed to create HTTP source: Missing required parameter: url
  --> tests/ui/fail-syntax/http_invalid_syntax.rs:6:1
   |
 6 | #[cite(http, selector = "h1", reason = "test reason")]

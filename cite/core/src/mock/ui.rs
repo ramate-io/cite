@@ -330,7 +330,7 @@ mod tests {
 
 		// Get the serialized format
 		let json_map = original.to_standard_json().unwrap();
-		
+
 		// Convert to kwargs (remove src field)
 		let mut kwargs = HashMap::new();
 		for (key, value) in json_map {
