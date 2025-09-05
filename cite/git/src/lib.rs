@@ -290,6 +290,27 @@ impl GitDiff {
 	}
 }
 
+impl CurrentGitContent {
+	/// Check if the path pattern represents a directory (not a file)
+	fn is_directory_path(&self) -> bool {
+		// A path is considered a directory if:
+		// 1. It ends with '/' (explicit directory)
+		// 2. It doesn't contain a file extension and doesn't look like a file
+		// 3. It's not a glob pattern
+		if self.path_pattern.path.ends_with('/') {
+			return true;
+		}
+		
+		if self.path_pattern.glob.is_some() {
+			return false; // Glob patterns are not directories
+		}
+		
+		// Check if it looks like a directory path (no file extension, not a single filename)
+		let path = &self.path_pattern.path;
+		!path.contains('.') && path.contains('/') && !path.ends_with(".md") && !path.ends_with(".rs") && !path.ends_with(".txt")
+	}
+}
+
 impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 	fn diff(&self, other: &ReferencedGitContent) -> Result<GitDiff, SourceError> {
 		// Use the repository manager
@@ -361,7 +382,18 @@ impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 
 		// Compare the two trees: referenced_revision vs current_revision
 		let mut opts = DiffOptions::new();
-		opts.pathspec(&self.path_pattern.path);
+		
+		// Handle different path patterns for diff options
+		if let Some(ref _glob_pattern) = self.path_pattern.glob {
+			// For glob patterns, we need to handle the filtering in the diff callback
+			// Don't set pathspec for glob patterns as git2 doesn't support glob in pathspec
+		} else if self.path_pattern.path.ends_with('/') || self.is_directory_path() {
+			// For directory paths, we need to handle this differently
+			// Don't set pathspec for directories as it won't work properly
+		} else {
+			// For single files, we can use pathspec
+			opts.pathspec(&self.path_pattern.path);
+		}
 
 		let diff = repo.diff_tree_to_tree(Some(&comparison_tree), Some(&current_tree), Some(&mut opts))
 			.map_err(|e| SourceError::Internal(e.into()))?;
@@ -375,7 +407,21 @@ impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 			let file_path = delta.new_file().path().or_else(|| delta.old_file().path());
 
 			if let Some(path) = file_path {
-				if self.path_pattern.matches(path) {
+				// Enhanced path matching for directories and glob patterns
+				let path_matches = if self.path_pattern.glob.is_some() {
+					// For glob patterns, use the existing matches method
+					self.path_pattern.matches(path)
+				} else if self.path_pattern.path.ends_with('/') || self.is_directory_path() {
+					// For directory paths (with or without trailing slash), check if the file is within the directory
+					let dir_path = self.path_pattern.path.trim_end_matches('/');
+					path.to_string_lossy().starts_with(dir_path) && 
+					(path.to_string_lossy() == dir_path || path.to_string_lossy().starts_with(&format!("{}/", dir_path)))
+				} else {
+					// For single files, use exact match
+					self.path_pattern.matches(path)
+				};
+
+				if path_matches {
 					// Check if this line is within our line range
 					let should_include = if let Some(ref line_range) = self.path_pattern.line_range
 					{
@@ -913,6 +959,129 @@ mod tests {
 		// Test that diff works with mixed revision types
 		let _diff_result = current_content.diff(&referenced_content);
 		// Should not panic
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_with_oac_repository() -> Result<(), anyhow::Error> {
+		// Test GitSource with the ramate-io/oac repository to debug empty repo issues
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/oac",
+			"README.md",
+			"main",  // Try main branch first
+			"main",
+			None
+		)?;
+
+		// Test that we can get referenced content
+		let referenced_content = source.get_referenced()?;
+		assert_eq!(referenced_content.remote, "https://github.com/ramate-io/oac");
+		assert_eq!(referenced_content.revision, "main");
+
+		// Test that we can get current content
+		let current_content = source.get_current()?;
+		assert_eq!(current_content.remote, "https://github.com/ramate-io/oac");
+		assert_eq!(current_content.revision, "main");
+
+		// Test that diff works
+		let diff_result = current_content.diff(&referenced_content);
+		assert!(diff_result.is_ok(), "Diff should work for oac repository");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_with_oac_different_branches() -> Result<(), anyhow::Error> {
+		// Test GitSource with different branch names for oac repository
+		let branches_to_try = ["main", "master", "develop", "dev"];
+		
+		for branch in &branches_to_try {
+			let source = GitSource::try_new(
+				"https://github.com/ramate-io/oac",
+				"README.md",
+				branch,
+				branch,
+				None
+			)?;
+
+			// Try to get referenced content
+			if let Ok(content) = source.get_referenced() {
+				assert_eq!(content.revision, *branch);
+				
+				// Try to get current content
+				if let Ok(current) = source.get_current() {
+					assert_eq!(current.revision, *branch);
+					
+					// Try diff
+					if current.diff(&content).is_ok() {
+						break; // Found a working branch, we're done
+					}
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_directory_diffing() -> Result<(), anyhow::Error> {
+		// Test directory diffing functionality
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"cite/http/tests/content",  // Directory path
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+			"main",
+			None
+		)?;
+
+		let comparison = source.get()?;
+
+		assert!(comparison.diff().has_changes());
+
+		assert_eq!(comparison.diff().diff(), "Fdiff --git a/cite/http/tests/content/diffed-lines-1-3.md b/cite/http/tests/content/diffed-lines-1-3.md\ndeleted file mode 100644\nindex 0f800a0..0000000\n--- a/cite/http/tests/content/diffed-lines-1-3.md\n+++ /dev/null\nH@@ -1,10 +0,0 @@\n-Alpha\n-Bravo\n-Charlie\n-Delta\n-Echo\n-Foxtrot\n-Gamma\n-Halifax\n-Istanbul\n-Juniper>\n\\ No newline at end of file\nFdiff --git a/cite/http/tests/content/diffed-lines-5-10.md b/cite/http/tests/content/diffed-lines-5-10.md\ndeleted file mode 100644\nindex 0f800a0..0000000\n--- a/cite/http/tests/content/diffed-lines-5-10.md\n+++ /dev/null\nH@@ -1,10 +0,0 @@\n-Alpha\n-Bravo\n-Charlie\n-Delta\n-Echo\n-Foxtrot\n-Gamma\n-Halifax\n-Istanbul\n-Juniper>\n\\ No newline at end of file\nFdiff --git a/cite/http/tests/content/no-diffed.md b/cite/http/tests/content/no-diffed.md\ndeleted file mode 100644\nindex 6c163db..0000000\n--- a/cite/http/tests/content/no-diffed.md\n+++ /dev/null\nH@@ -1,2 +0,0 @@\n-# Summary\n-Do not change the contents of this file.>\n\\ No newline at end of file\nFdiff --git a/cite/http/tests/content/to-delete.md b/cite/http/tests/content/to-delete.md\ndeleted file mode 100644\nindex 080a673..0000000\n--- a/cite/http/tests/content/to-delete.md\n+++ /dev/null\nH@@ -1 +0,0 @@\n-This file will soon be deleted.>\n\\ No newline at end of file\n");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_glob_pattern_diffing() -> Result<(), anyhow::Error> {
+		// Test glob pattern diffing functionality
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"cite/git/src/*.rs",  // Glob pattern for all .rs files
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+			"main",
+			None
+		)?;
+
+		let referenced_content = source.get_referenced()?;
+		let current_content = source.get_current()?;
+
+		// Test that diff works for glob pattern
+		let diff_result = current_content.diff(&referenced_content);
+		assert!(diff_result.is_ok(), "Glob pattern diff should work");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_recursive_glob_diffing() -> Result<(), anyhow::Error> {
+		// Test recursive glob pattern diffing functionality
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"cite/git/src/**/*.rs",  // Recursive glob pattern
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+			"main",
+			None
+		)?;
+
+		let referenced_content = source.get_referenced()?;
+		let current_content = source.get_current()?;
+
+		// Test that diff works for recursive glob pattern
+		let diff_result = current_content.diff(&referenced_content);
+		assert!(diff_result.is_ok(), "Recursive glob pattern diff should work");
 
 		Ok(())
 	}

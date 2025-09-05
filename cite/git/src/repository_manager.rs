@@ -1,7 +1,7 @@
 use crate::GitSourceError;
 use git2::{FetchOptions, RemoteCallbacks, Repository};
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// Builder for fetching and preparing git repositories
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -175,12 +175,12 @@ impl RepositoryManager {
 			if repo.revparse_single(&format!("origin/{}", revision)).is_ok() {
 				return true;
 			}
-			
+
 			// Try refs/heads/branch pattern
 			if repo.revparse_single(&format!("refs/heads/{}", revision)).is_ok() {
 				return true;
 			}
-			
+
 			// Try refs/remotes/origin/branch pattern
 			if repo.revparse_single(&format!("refs/remotes/origin/{}", revision)).is_ok() {
 				return true;
@@ -211,7 +211,7 @@ impl RepositoryManager {
 			if !self.revision_exists(revision) {
 				// Convert revision to proper refspec format
 				let refspec = self.convert_to_refspec(revision);
-				
+
 				// Try to fetch this specific revision
 				// Note: This is a best-effort approach - some commits might not be fetchable
 				// if they're not reachable from any ref
@@ -228,12 +228,15 @@ impl RepositoryManager {
 		if revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit()) {
 			return revision.to_string();
 		}
-		
+
 		// If it looks like a short commit hash (7-39 characters, hex), fetch it directly
-		if revision.len() >= 7 && revision.len() <= 39 && revision.chars().all(|c| c.is_ascii_hexdigit()) {
+		if revision.len() >= 7
+			&& revision.len() <= 39
+			&& revision.chars().all(|c| c.is_ascii_hexdigit())
+		{
 			return revision.to_string();
 		}
-		
+
 		// For branch names, use the proper refspec format
 		// This handles both local branch names and remote branch names
 		if !revision.starts_with("refs/") {
@@ -429,7 +432,10 @@ mod tests {
 
 		// Test branch name with special characters
 		let refspec = manager.convert_to_refspec("feature/new-feature");
-		assert_eq!(refspec, "refs/heads/feature/new-feature:refs/remotes/origin/feature/new-feature");
+		assert_eq!(
+			refspec,
+			"refs/heads/feature/new-feature:refs/remotes/origin/feature/new-feature"
+		);
 
 		// Test already formatted refspec
 		let refspec = manager.convert_to_refspec("refs/heads/main");
@@ -476,5 +482,87 @@ mod tests {
 
 		// At least one of these should exist
 		assert!(manager.revision_exists("master") || manager.revision_exists("main"));
+	}
+
+	#[test]
+	fn test_ramate_oac_repository() {
+		// Test with the ramate-io/oac repository to debug empty repo issues
+		let temp_dir = tempfile::tempdir().unwrap();
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/ramate-io/oac".to_string(),
+			temp_dir.path().to_path_buf(),
+		);
+
+		let manager = builder.fetch().unwrap();
+		let repo_path = manager.path();
+
+		// Verify the repository directory exists and has .git
+		assert!(repo_path.exists());
+		assert!(repo_path.join(".git").exists());
+
+		// Test that we can open the repository
+		let repo = manager.get_repository().unwrap();
+		assert!(!repo.is_bare());
+
+		// Test common branch names
+		let common_branches = ["main", "master", "develop", "dev"];
+		let mut found_branches = Vec::new();
+
+		for branch in &common_branches {
+			if manager.revision_exists(branch) {
+				found_branches.push(*branch);
+			}
+		}
+
+		// At least one branch should exist
+		assert!(!found_branches.is_empty(), "No common branches found in ramate-io/oac repository");
+
+		// Test fetching the found branches
+		if !found_branches.is_empty() {
+			let result = manager.fetch_specific_revisions(&found_branches);
+			assert!(result.is_ok());
+		}
+
+		// Test that we can list references
+		let references = repo.references().unwrap();
+		let ref_count = references.count();
+		assert!(ref_count > 0, "Repository appears to have no references");
+
+		// Test that HEAD exists
+		assert!(repo.head().is_ok(), "Repository HEAD not found");
+	}
+
+	#[test]
+	fn test_repository_diagnostics() {
+		// Test diagnostic functions to inspect repository state
+		let temp_dir = tempfile::tempdir().unwrap();
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/ramate-io/oac".to_string(),
+			temp_dir.path().to_path_buf(),
+		);
+
+		let manager = builder.fetch().unwrap();
+		let repo = manager.get_repository().unwrap();
+
+		// Test repository diagnostics
+		let head = repo.head().unwrap();
+		assert!(head.name().is_some(), "HEAD should have a name");
+
+		// List all references
+		let references = repo.references().unwrap();
+		let ref_count = references.count();
+		assert!(ref_count > 0, "Repository should have references");
+
+		// Test branch listing
+		let branches = repo.branches(None).unwrap();
+		let branch_count = branches.count();
+		assert!(branch_count > 0, "Repository should have branches");
+
+		// Test remote listing
+		let remotes = repo.remotes().unwrap();
+		assert!(!remotes.is_empty(), "Repository should have remotes");
+
+		// Verify repository is not empty
+		assert!(!repo.is_empty().unwrap(), "Repository should not be empty");
 	}
 }
