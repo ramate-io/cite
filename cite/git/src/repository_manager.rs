@@ -202,135 +202,133 @@ impl RepositoryManager {
 
 	/// Get the repository at the managed path
 	pub fn get_repository(&self) -> Result<Repository, GitSourceError> {
-		// Wait for any active locks to be released before opening the repository
-		self.wait_for_locks()?;
-		Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))
+		self.with_retry(|| Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e)))
 	}
 
-	/// Wait for git lock files to be released by other processes
-	fn wait_for_locks(&self) -> Result<(), GitSourceError> {
-		let git_dir = self.repo_path.join(".git");
-		if !git_dir.exists() {
-			return Ok(());
-		}
+	/// Retry git operations that fail due to lock conflicts
+	fn with_retry<F, T>(&self, operation: F) -> Result<T, GitSourceError>
+	where
+		F: Fn() -> Result<T, GitSourceError>,
+	{
+		let max_retries = 5;
+		let base_delay = std::time::Duration::from_millis(50);
 
-		// List of common git lock files
-		let lock_files = [
-			"config.lock",
-			"index.lock",
-			"HEAD.lock",
-			"refs/heads/main.lock",
-			"refs/heads/master.lock",
-			"refs/remotes/origin/main.lock",
-			"refs/remotes/origin/master.lock",
-		];
-
-		let max_wait_time = std::time::Duration::from_secs(15); // Maximum wait time
-		let check_interval = std::time::Duration::from_millis(20); // Check every 100ms
-		let start_time = std::time::Instant::now();
-
-		while start_time.elapsed() < max_wait_time {
-			let mut locks_found = false;
-
-			for lock_file in &lock_files {
-				let lock_path = git_dir.join(lock_file);
-				if lock_path.exists() {
-					locks_found = true;
-					break;
+		for attempt in 0..max_retries {
+			match operation() {
+				Ok(result) => return Ok(result),
+				Err(e) => {
+					// Check if this is a lock-related error
+					if self.is_lock_error(&e) {
+						if attempt < max_retries - 1 {
+							// Exponential backoff: 50ms, 100ms, 200ms, 400ms
+							let delay = base_delay * (1 << attempt);
+							std::thread::sleep(delay);
+							continue;
+						}
+					}
+					return Err(e);
 				}
 			}
-
-			if !locks_found {
-				return Ok(()); // No locks found, we can proceed
-			}
-
-			// Wait a bit and check again
-			std::thread::sleep(check_interval);
 		}
 
-		// If we've waited too long, proceed anyway - the operation might still succeed
-		// or fail with a more informative error
-		Ok(())
+		// This should never be reached due to the match above, but just in case
+		operation()
+	}
+
+	/// Check if an error is related to git lock conflicts
+	fn is_lock_error(&self, error: &GitSourceError) -> bool {
+		match error {
+			GitSourceError::Git(git_error) => {
+				let message = git_error.message();
+				message.contains("lock")
+					|| message.contains("File exists")
+					|| message.contains("failed to create locked file")
+			}
+			_ => false,
+		}
 	}
 
 	/// Fetch specific revisions that are needed
 	pub fn fetch_specific_revisions(&self, revisions: &[&str]) -> Result<(), GitSourceError> {
-		// Wait for any active locks to be released before opening the repository
-		self.wait_for_locks()?;
+		self.with_retry(|| {
+			let repo = Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))?;
+			let mut remote = repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
 
-		let repo = Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))?;
-		let mut remote = repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
+			let mut callbacks = RemoteCallbacks::new();
+			callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default());
 
-		let mut callbacks = RemoteCallbacks::new();
-		callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default());
+			let mut fetch_options = FetchOptions::new();
+			fetch_options.remote_callbacks(callbacks);
 
-		let mut fetch_options = FetchOptions::new();
-		fetch_options.remote_callbacks(callbacks);
-
-		// Collect revisions that need fetching
-		let mut revisions_to_fetch = Vec::new();
-		for revision in revisions {
-			if !self.revision_exists(revision) {
-				revisions_to_fetch.push(self.convert_to_refspec(revision));
+			// Collect revisions that need fetching
+			let mut revisions_to_fetch = Vec::new();
+			for revision in revisions {
+				if !self.revision_exists(revision) {
+					revisions_to_fetch.push(self.convert_to_refspec(revision));
+				}
 			}
-		}
 
-		// Only fetch if we have revisions that don't exist locally
-		if !revisions_to_fetch.is_empty() {
-			// First try to fetch just the specific revisions we need
-			let fetch_result = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
+			// Only fetch if we have revisions that don't exist locally
+			if !revisions_to_fetch.is_empty() {
+				// First try to fetch just the specific revisions we need
+				let fetch_result =
+					remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
 
-			// If specific fetch fails, try fetching common branches that might contain our revisions
-			if fetch_result.is_err() {
-				// Try fetching main/master branches which are likely to contain most commits
-				let common_branches = [
-					"refs/heads/main:refs/remotes/origin/main",
-					"refs/heads/master:refs/remotes/origin/master",
-				];
-				let _ = remote.fetch(&common_branches, Some(&mut fetch_options), None);
+				// If specific fetch fails, try fetching common branches that might contain our revisions
+				if fetch_result.is_err() {
+					// Try fetching main/master branches which are likely to contain most commits
+					let common_branches = [
+						"refs/heads/main:refs/remotes/origin/main",
+						"refs/heads/master:refs/remotes/origin/master",
+					];
+					let _ = remote.fetch(&common_branches, Some(&mut fetch_options), None);
 
-				// Try fetching the specific revisions again
-				let _ = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
+					// Try fetching the specific revisions again
+					let _ = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
+				}
 			}
-		}
 
-		// Validate that we can resolve each revision (this will lazily fetch content as needed)
-		for revision in revisions {
-			if self.revision_exists(revision) {
-				// Try to resolve the revision - this will fetch content lazily if needed
-				if let Ok(obj) = repo.revparse_single(revision) {
-					match obj.kind() {
-						Some(git2::ObjectType::Commit) => {
-							// For commits, just verify we can access the tree (lazy fetch)
-							if let Ok(commit) = obj.peel_to_commit() {
-								let _tree = commit.tree().map_err(|e| GitSourceError::Git(e))?;
+			// Validate that we can resolve each revision (this will lazily fetch content as needed)
+			for revision in revisions {
+				if self.revision_exists(revision) {
+					// Try to resolve the revision - this will fetch content lazily if needed
+					if let Ok(obj) = repo.revparse_single(revision) {
+						match obj.kind() {
+							Some(git2::ObjectType::Commit) => {
+								// For commits, just verify we can access the tree (lazy fetch)
+								if let Ok(commit) = obj.peel_to_commit() {
+									let _tree =
+										commit.tree().map_err(|e| GitSourceError::Git(e))?;
+								}
 							}
-						}
-						Some(git2::ObjectType::Tag) => {
-							// For tags, peel to commit and verify tree access
-							if let Ok(tag) = obj.peel_to_tag() {
-								if let Ok(target) = tag.target() {
-									if let Ok(commit) = target.peel_to_commit() {
-										let _tree =
-											commit.tree().map_err(|e| GitSourceError::Git(e))?;
+							Some(git2::ObjectType::Tag) => {
+								// For tags, peel to commit and verify tree access
+								if let Ok(tag) = obj.peel_to_tag() {
+									if let Ok(target) = tag.target() {
+										if let Ok(commit) = target.peel_to_commit() {
+											let _tree = commit
+												.tree()
+												.map_err(|e| GitSourceError::Git(e))?;
+										}
 									}
 								}
 							}
-						}
-						Some(git2::ObjectType::Tree) => {
-							// For trees, verify we can access it
-							let _tree = obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?;
-						}
-						_ => {
-							// Other object types, just verify resolution
-							let _ = repo.revparse_single(revision);
+							Some(git2::ObjectType::Tree) => {
+								// For trees, verify we can access it
+								let _tree =
+									obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?;
+							}
+							_ => {
+								// Other object types, just verify resolution
+								let _ = repo.revparse_single(revision);
+							}
 						}
 					}
 				}
 			}
-		}
 
-		Ok(())
+			Ok(())
+		})
 	}
 
 	/// Convert a revision string to a proper refspec format for fetching
