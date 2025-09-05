@@ -445,7 +445,7 @@ mod tests {
 		assert!(json_map.contains_key("source_url"));
 		assert!(json_map.contains_key("matches"));
 		assert!(json_map.contains_key("cache_behavior"));
-		
+
 		// Verify the matches field contains the regex
 		let matches_obj = json_map.get("matches").unwrap().as_object().unwrap();
 		assert_eq!(matches_obj.get("Regex").unwrap().as_str().unwrap(), ".*");
@@ -531,11 +531,12 @@ mod tests {
 			"https://example.com",
 			MatchExpression::regex(".*"),
 			cite_cache::CacheBehavior::Enabled,
-		).unwrap();
+		)
+		.unwrap();
 
 		// Get the serialized format
 		let json_map = original.to_standard_json().unwrap();
-		
+
 		// Convert to kwargs (remove src field)
 		let mut kwargs = HashMap::new();
 		for (key, value) in json_map {
