@@ -1,3 +1,5 @@
+pub mod ui;
+
 use cite_cache::{CacheError, CacheableCurrent, CacheableReferenced};
 use cite_core::{Comparison, Content, Current, Diff, Id, Referenced, Source, SourceError};
 use regex::Regex;

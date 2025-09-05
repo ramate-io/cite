@@ -1,3 +1,4 @@
+pub mod ui;
 pub mod line_range;
 pub mod repository_manager;
 
