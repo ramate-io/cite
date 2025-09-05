@@ -92,7 +92,7 @@ pub struct Cache {
 	builder: CacheBuilder,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CacheBehavior {
 	Enabled,
 	Ignored,

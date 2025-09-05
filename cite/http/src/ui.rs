@@ -5,6 +5,64 @@ use std::collections::HashMap;
 
 impl SourceUi<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
 	fn from_kwarg_json(kwargs: &HashMap<String, Value>) -> Result<Self, SourceUiError> {
+		// First, try direct deserialization from the kwargs
+		if let Ok(source) = Self::try_direct_deserialization(kwargs) {
+			return Ok(source);
+		}
+
+		// If direct deserialization fails, try manual parameter extraction
+		Self::try_manual_extraction(kwargs)
+	}
+
+	fn to_standard_json(&self) -> Result<Map<String, Value>, SourceUiError> {
+		// Use direct serialization to JSON, then convert to Map
+		let json_value = serde_json::to_value(self).map_err(|e| {
+			SourceUiError::Serialization(format!("Failed to serialize HttpMatch: {}", e))
+		})?;
+
+		let mut map = json_value
+			.as_object()
+			.ok_or_else(|| {
+				SourceUiError::Serialization(
+					"HttpMatch serialization did not produce an object".to_string(),
+				)
+			})?
+			.clone();
+
+		// Add the src field for consistency
+		map.insert("src".to_string(), Value::String("http".to_string()));
+
+		Ok(map)
+	}
+
+	fn to_above_doc_attr(&self) -> Result<AboveDocAttr, SourceUiError> {
+		let json_map = self.to_standard_json()?;
+		let json_content = serde_json::to_string_pretty(&json_map).map_err(|e| {
+			SourceUiError::Serialization(format!("Failed to serialize to JSON: {}", e))
+		})?;
+
+		Ok(AboveDocAttr::new(json_content, "http".to_string()))
+	}
+}
+
+impl HttpMatch {
+	/// Try to deserialize HttpMatch directly from kwargs using serde
+	fn try_direct_deserialization(kwargs: &HashMap<String, Value>) -> Result<Self, SourceUiError> {
+		// Convert HashMap to JSON and try to deserialize
+		let json_value = serde_json::to_value(kwargs).map_err(|e| {
+			SourceUiError::Serialization(format!("Failed to convert kwargs to JSON: {}", e))
+		})?;
+
+		// Try to deserialize as HttpMatch directly
+		let source: HttpMatch = serde_json::from_value(json_value).map_err(|e| {
+			SourceUiError::Serialization(format!("Direct deserialization failed: {}", e))
+		})?;
+
+		Ok(source)
+	}
+
+	/// Try manual parameter extraction for backward compatibility
+	fn try_manual_extraction(kwargs: &HashMap<String, Value>) -> Result<Self, SourceUiError> {
 		// Extract required parameters
 		let url = kwargs
 			.get("url")
@@ -78,59 +136,6 @@ impl SourceUi<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
 		// Create the HttpMatch
 		HttpMatch::with_match_expression_and_cache_behavior(url, match_expr, cache_behavior)
 			.map_err(|e| SourceUiError::Internal(e.into()))
-	}
-
-	fn to_standard_json(&self) -> Result<Map<String, Value>, SourceUiError> {
-		let mut map = Map::new();
-		map.insert("src".to_string(), Value::String("http".to_string()));
-		map.insert("url".to_string(), Value::String(self.source_url.as_str().to_string()));
-
-		// Serialize match expression
-		let match_value = match &self.matches {
-			MatchExpression::Regex(pattern) => {
-				let mut match_obj = Map::new();
-				match_obj.insert("type".to_string(), Value::String("regex".to_string()));
-				match_obj.insert("pattern".to_string(), Value::String(pattern.clone()));
-				Value::Object(match_obj)
-			}
-			MatchExpression::CssSelector(selector) => {
-				let mut match_obj = Map::new();
-				match_obj.insert("type".to_string(), Value::String("css".to_string()));
-				match_obj.insert("pattern".to_string(), Value::String(selector.clone()));
-				Value::Object(match_obj)
-			}
-			MatchExpression::XPath(expression) => {
-				let mut match_obj = Map::new();
-				match_obj.insert("type".to_string(), Value::String("xpath".to_string()));
-				match_obj.insert("pattern".to_string(), Value::String(expression.clone()));
-				Value::Object(match_obj)
-			}
-			MatchExpression::Fragment(fragment) => {
-				let mut match_obj = Map::new();
-				match_obj.insert("type".to_string(), Value::String("fragment".to_string()));
-				match_obj.insert("pattern".to_string(), Value::String(fragment.clone()));
-				Value::Object(match_obj)
-			}
-			MatchExpression::FullDocument => {
-				let mut match_obj = Map::new();
-				match_obj.insert("type".to_string(), Value::String("full".to_string()));
-				Value::Object(match_obj)
-			}
-		};
-		map.insert("match".to_string(), match_value);
-
-		map.insert("name".to_string(), Value::String(self.id.as_str().to_string()));
-
-		Ok(map)
-	}
-
-	fn to_above_doc_attr(&self) -> Result<AboveDocAttr, SourceUiError> {
-		let json_map = self.to_standard_json()?;
-		let json_content = serde_json::to_string_pretty(&json_map).map_err(|e| {
-			SourceUiError::Serialization(format!("Failed to serialize to JSON: {}", e))
-		})?;
-
-		Ok(AboveDocAttr::new(json_content, "http".to_string()))
 	}
 }
 
@@ -328,9 +333,9 @@ mod tests {
 
 		let json_map = http_match.to_standard_json().unwrap();
 		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "http");
-		assert_eq!(json_map.get("url").unwrap().as_str().unwrap(), "https://example.com");
-		assert!(json_map.contains_key("match"));
-		assert!(json_map.contains_key("name"));
+		assert!(json_map.contains_key("matches"));
+		assert!(json_map.contains_key("source_url"));
+		assert!(json_map.contains_key("id"));
 	}
 
 	#[test]
@@ -343,9 +348,8 @@ mod tests {
 		.unwrap();
 
 		let json_map = http_match.to_standard_json().unwrap();
-		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
-		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "regex");
-		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), ".*");
+		let matches_obj = json_map.get("matches").unwrap().as_object().unwrap();
+		assert_eq!(matches_obj.get("Regex").unwrap().as_str().unwrap(), ".*");
 	}
 
 	#[test]
@@ -358,9 +362,8 @@ mod tests {
 		.unwrap();
 
 		let json_map = http_match.to_standard_json().unwrap();
-		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
-		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "css");
-		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), ".content");
+		let matches_obj = json_map.get("matches").unwrap().as_object().unwrap();
+		assert_eq!(matches_obj.get("CssSelector").unwrap().as_str().unwrap(), ".content");
 	}
 
 	#[test]
@@ -373,9 +376,8 @@ mod tests {
 		.unwrap();
 
 		let json_map = http_match.to_standard_json().unwrap();
-		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
-		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "xpath");
-		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), "//div[@class='content']");
+		let matches_obj = json_map.get("matches").unwrap().as_object().unwrap();
+		assert_eq!(matches_obj.get("XPath").unwrap().as_str().unwrap(), "//div[@class='content']");
 	}
 
 	#[test]
@@ -388,9 +390,8 @@ mod tests {
 		.unwrap();
 
 		let json_map = http_match.to_standard_json().unwrap();
-		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
-		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "fragment");
-		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), "main-content");
+		let matches_obj = json_map.get("matches").unwrap().as_object().unwrap();
+		assert_eq!(matches_obj.get("Fragment").unwrap().as_str().unwrap(), "main-content");
 	}
 
 	#[test]
@@ -403,8 +404,7 @@ mod tests {
 		.unwrap();
 
 		let json_map = http_match.to_standard_json().unwrap();
-		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
-		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "full");
+		assert_eq!(json_map.get("matches").unwrap().as_str().unwrap(), "FullDocument");
 	}
 
 	#[test]
@@ -419,12 +419,12 @@ mod tests {
 		let doc_attr = http_match.to_above_doc_attr().unwrap();
 		assert_eq!(doc_attr.source_type, "http");
 
-		// Parse the JSON content to verify it's valid
+		// Parse the JSON content to verify it's valid and uses direct serialization format
 		let json_value: serde_json::Value = serde_json::from_str(&doc_attr.json_content).unwrap();
 		assert_eq!(json_value["src"], "http");
-		assert_eq!(json_value["url"], "https://example.com");
-		assert_eq!(json_value["match"]["type"], "regex");
-		assert_eq!(json_value["match"]["pattern"], ".*");
+		assert!(json_value["source_url"].is_object());
+		assert!(json_value["matches"].is_object());
+		assert_eq!(json_value["matches"]["Regex"], ".*");
 	}
 
 	#[test]
@@ -434,18 +434,119 @@ mod tests {
 		original_kwargs.insert("match".to_string(), json!("regex:.*"));
 		original_kwargs.insert("cache".to_string(), json!("enabled"));
 
-		// Create HttpMatch from kwargs
+		// Create HttpMatch from kwargs (using ergonomic format)
 		let http_match = HttpMatch::from_kwarg_json(&original_kwargs).unwrap();
 
-		// Convert back to JSON
+		// Convert back to JSON (should use direct serialization format)
 		let json_map = http_match.to_standard_json().unwrap();
 
-		// Verify the JSON contains expected fields
+		// Verify the JSON contains expected fields in direct serialization format
 		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "http");
-		assert_eq!(json_map.get("url").unwrap().as_str().unwrap(), "https://example.com");
+		assert!(json_map.contains_key("source_url"));
+		assert!(json_map.contains_key("matches"));
+		assert!(json_map.contains_key("cache_behavior"));
+		
+		// Verify the matches field contains the regex
+		let matches_obj = json_map.get("matches").unwrap().as_object().unwrap();
+		assert_eq!(matches_obj.get("Regex").unwrap().as_str().unwrap(), ".*");
+	}
 
-		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
-		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "regex");
-		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), ".*");
+	#[test]
+	fn test_direct_serialization_deserialization() {
+		// Create an HttpMatch using the constructor
+		let original = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::regex(".*"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		// Serialize to JSON using direct serialization
+		let json_map = original.to_standard_json().unwrap();
+
+		// Verify it contains the expected fields from direct serialization
+		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "http");
+		assert!(json_map.contains_key("matches"));
+		assert!(json_map.contains_key("source_url"));
+		assert!(json_map.contains_key("cache_path"));
+		assert!(json_map.contains_key("id"));
+		assert!(json_map.contains_key("cache_behavior"));
+		assert!(json_map.contains_key("cache"));
+
+		// Check that source_url contains the expected URL
+		let source_url_obj = json_map.get("source_url").unwrap().as_object().unwrap();
+		assert_eq!(source_url_obj.get("url").unwrap().as_str().unwrap(), "https://example.com");
+	}
+
+	#[test]
+	fn test_direct_deserialization_from_serialized_json() {
+		// Create an HttpMatch using the constructor
+		let original = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::regex(".*"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		// Serialize to JSON
+		let json_map = original.to_standard_json().unwrap();
+
+		// Convert back to HashMap (simulating kwargs)
+		let mut kwargs = HashMap::new();
+		for (key, value) in json_map {
+			if key != "src" {
+				// Remove src field as it's not part of the struct
+				kwargs.insert(key, value);
+			}
+		}
+
+		// Try to deserialize using direct deserialization
+		let deserialized = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+
+		// Verify the deserialized version matches the original
+		assert_eq!(deserialized.source_url.as_str(), original.source_url.as_str());
+		assert_eq!(deserialized.matches, original.matches);
+		assert_eq!(deserialized.cache_behavior, original.cache_behavior);
+		assert_eq!(deserialized.cache_path, original.cache_path);
+		assert_eq!(deserialized.id.as_str(), original.id.as_str());
+	}
+
+	#[test]
+	fn test_fallback_to_manual_extraction() {
+		// Test that manual extraction still works for legacy syntax
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("match".to_string(), json!("regex:.*"));
+
+		// This should use manual extraction since the kwargs don't match the struct exactly
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::Regex(_)));
+	}
+
+	#[test]
+	fn test_direct_deserialization_from_standard_format() {
+		// Create an HttpMatch and serialize it to get the exact format
+		let original = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::regex(".*"),
+			cite_cache::CacheBehavior::Enabled,
+		).unwrap();
+
+		// Get the serialized format
+		let json_map = original.to_standard_json().unwrap();
+		
+		// Convert to kwargs (remove src field)
+		let mut kwargs = HashMap::new();
+		for (key, value) in json_map {
+			if key != "src" {
+				kwargs.insert(key, value);
+			}
+		}
+
+		// This should use direct deserialization
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::Regex(_)));
 	}
 }
