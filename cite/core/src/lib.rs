@@ -115,6 +115,7 @@
 pub mod behavior;
 pub mod id;
 pub mod mock;
+pub mod ui;
 
 pub use behavior::{CitationAnnotation, CitationBehavior, CitationGlobal, CitationLevel};
 pub use id::Id;
