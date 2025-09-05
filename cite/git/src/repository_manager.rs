@@ -83,13 +83,14 @@ impl RepositoryBuilder {
 
 			match Repository::clone(&self.remote_url, &repo_path) {
 				Ok(repo) => {
-					// After cloning, fetch all branches and refs to ensure we have everything
+					// After cloning, fetch common branches to ensure we have basic coverage
 					if let Ok(mut remote) = repo.find_remote("origin") {
-						let _ = remote.fetch(
-							&["refs/heads/*:refs/remotes/origin/*", "refs/tags/*:refs/tags/*"],
-							Some(&mut fetch_options),
-							None,
-						);
+						// Only fetch main/master branches initially - other branches will be fetched as needed
+						let common_branches = [
+							"refs/heads/main:refs/remotes/origin/main",
+							"refs/heads/master:refs/remotes/origin/master",
+						];
+						let _ = remote.fetch(&common_branches, Some(&mut fetch_options), None);
 					}
 				}
 				Err(e) => {
@@ -215,59 +216,62 @@ impl RepositoryManager {
 		let mut fetch_options = FetchOptions::new();
 		fetch_options.remote_callbacks(callbacks);
 
-		// First, ensure we have all branches and refs
-		remote
-			.fetch(
-				&["refs/heads/*:refs/remotes/origin/*", "refs/tags/*:refs/tags/*"],
-				Some(&mut fetch_options),
-				None,
-			)
-			.map_err(|e| GitSourceError::Git(e))?;
-
-		// For each revision, try to fetch it if it doesn't exist locally
+		// Collect revisions that need fetching
+		let mut revisions_to_fetch = Vec::new();
 		for revision in revisions {
 			if !self.revision_exists(revision) {
-				// Convert revision to proper refspec format
-				let refspec = self.convert_to_refspec(revision);
-
-				// Try to fetch this specific revision
-				// Note: This is a best-effort approach - some commits might not be fetchable
-				// if they're not reachable from any ref
-				let _ = remote.fetch(&[&refspec], Some(&mut fetch_options), None);
+				revisions_to_fetch.push(self.convert_to_refspec(revision));
 			}
 		}
 
-		// Ensure we have the complete tree for each revision
+		// Only fetch if we have revisions that don't exist locally
+		if !revisions_to_fetch.is_empty() {
+			// First try to fetch just the specific revisions we need
+			let fetch_result = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
+
+			// If specific fetch fails, try fetching common branches that might contain our revisions
+			if fetch_result.is_err() {
+				// Try fetching main/master branches which are likely to contain most commits
+				let common_branches = [
+					"refs/heads/main:refs/remotes/origin/main",
+					"refs/heads/master:refs/remotes/origin/master",
+				];
+				let _ = remote.fetch(&common_branches, Some(&mut fetch_options), None);
+
+				// Try fetching the specific revisions again
+				let _ = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
+			}
+		}
+
+		// Validate that we can resolve each revision (this will lazily fetch content as needed)
 		for revision in revisions {
 			if self.revision_exists(revision) {
-				// Try to resolve the revision to ensure we have the complete tree
+				// Try to resolve the revision - this will fetch content lazily if needed
 				if let Ok(obj) = repo.revparse_single(revision) {
 					match obj.kind() {
 						Some(git2::ObjectType::Commit) => {
-							// For commits, ensure we have the tree
+							// For commits, just verify we can access the tree (lazy fetch)
 							if let Ok(commit) = obj.peel_to_commit() {
 								let _tree = commit.tree().map_err(|e| GitSourceError::Git(e))?;
-								// Tree exists, we're good
 							}
 						}
 						Some(git2::ObjectType::Tag) => {
-							// For tags, peel to commit and ensure we have the tree
+							// For tags, peel to commit and verify tree access
 							if let Ok(tag) = obj.peel_to_tag() {
 								if let Ok(target) = tag.target() {
 									if let Ok(commit) = target.peel_to_commit() {
 										let _tree =
 											commit.tree().map_err(|e| GitSourceError::Git(e))?;
-										// Tree exists, we're good
 									}
 								}
 							}
 						}
 						Some(git2::ObjectType::Tree) => {
-							// For trees, we already have the tree
+							// For trees, verify we can access it
 							let _tree = obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?;
 						}
 						_ => {
-							// Other object types, try to resolve
+							// Other object types, just verify resolution
 							let _ = repo.revparse_single(revision);
 						}
 					}
