@@ -133,3 +133,319 @@ impl SourceUi<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
 		Ok(AboveDocAttr::new(json_content, "http".to_string()))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use serde_json::json;
+
+	#[test]
+	fn test_from_kwarg_json_basic_url() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::FullDocument));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_regex_match() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("match".to_string(), json!("regex:.*"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::Regex(_)));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_css_match() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("match".to_string(), json!("css:.content"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::CssSelector(_)));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_xpath_match() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("match".to_string(), json!("xpath://div[@class='content']"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::XPath(_)));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_fragment_match() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("match".to_string(), json!("fragment:main-content"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::Fragment(_)));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_full_match() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("match".to_string(), json!("full"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::FullDocument));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_structured_match() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert(
+			"match".to_string(),
+			json!({
+				"type": "regex",
+				"pattern": ".*"
+			}),
+		);
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		assert!(matches!(http_match.matches, MatchExpression::Regex(_)));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_cache_ignored() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("cache".to_string(), json!("ignored"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+		// Note: We can't easily test cache behavior without exposing internal state
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_cache_enabled() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert("cache".to_string(), json!("enabled"));
+
+		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(http_match.source_url.as_str(), "https://example.com");
+	}
+
+	#[test]
+	fn test_from_kwarg_json_missing_url() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("match".to_string(), json!("regex:.*"));
+
+		let result = HttpMatch::from_kwarg_json(&kwargs);
+		assert!(result.is_err());
+		if let Err(SourceUiError::MissingParameter(msg)) = result {
+			assert_eq!(msg, "url");
+		} else {
+			panic!("Expected MissingParameter error for url");
+		}
+	}
+
+	#[test]
+	fn test_from_kwarg_json_invalid_match_type() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert(
+			"match".to_string(),
+			json!({
+				"type": "invalid",
+				"pattern": ".*"
+			}),
+		);
+
+		let result = HttpMatch::from_kwarg_json(&kwargs);
+		assert!(result.is_err());
+		if let Err(SourceUiError::InvalidParameter(msg)) = result {
+			assert!(msg.contains("Unknown match type: invalid"));
+		} else {
+			panic!("Expected InvalidParameter error for invalid match type");
+		}
+	}
+
+	#[test]
+	fn test_from_kwarg_json_missing_match_pattern() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert(
+			"match".to_string(),
+			json!({
+				"type": "regex"
+			}),
+		);
+
+		let result = HttpMatch::from_kwarg_json(&kwargs);
+		assert!(result.is_err());
+		if let Err(SourceUiError::MissingParameter(msg)) = result {
+			assert_eq!(msg, "match.pattern");
+		} else {
+			panic!("Expected MissingParameter error for missing pattern");
+		}
+	}
+
+	#[test]
+	fn test_from_kwarg_json_missing_match_type() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("url".to_string(), json!("https://example.com"));
+		kwargs.insert(
+			"match".to_string(),
+			json!({
+				"pattern": ".*"
+			}),
+		);
+
+		let result = HttpMatch::from_kwarg_json(&kwargs);
+		assert!(result.is_err());
+		if let Err(SourceUiError::MissingParameter(msg)) = result {
+			assert_eq!(msg, "match.type");
+		} else {
+			panic!("Expected MissingParameter error for missing type");
+		}
+	}
+
+	#[test]
+	fn test_to_standard_json_basic() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::full_document(),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let json_map = http_match.to_standard_json().unwrap();
+		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "http");
+		assert_eq!(json_map.get("url").unwrap().as_str().unwrap(), "https://example.com");
+		assert!(json_map.contains_key("match"));
+		assert!(json_map.contains_key("name"));
+	}
+
+	#[test]
+	fn test_to_standard_json_with_regex() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::regex(".*"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let json_map = http_match.to_standard_json().unwrap();
+		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
+		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "regex");
+		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), ".*");
+	}
+
+	#[test]
+	fn test_to_standard_json_with_css() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::css_selector(".content"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let json_map = http_match.to_standard_json().unwrap();
+		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
+		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "css");
+		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), ".content");
+	}
+
+	#[test]
+	fn test_to_standard_json_with_xpath() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::xpath("//div[@class='content']"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let json_map = http_match.to_standard_json().unwrap();
+		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
+		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "xpath");
+		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), "//div[@class='content']");
+	}
+
+	#[test]
+	fn test_to_standard_json_with_fragment() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::fragment("main-content"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let json_map = http_match.to_standard_json().unwrap();
+		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
+		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "fragment");
+		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), "main-content");
+	}
+
+	#[test]
+	fn test_to_standard_json_with_full_document() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::full_document(),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let json_map = http_match.to_standard_json().unwrap();
+		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
+		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "full");
+	}
+
+	#[test]
+	fn test_to_above_doc_attr() {
+		let http_match = HttpMatch::with_match_expression_and_cache_behavior(
+			"https://example.com",
+			MatchExpression::regex(".*"),
+			cite_cache::CacheBehavior::Enabled,
+		)
+		.unwrap();
+
+		let doc_attr = http_match.to_above_doc_attr().unwrap();
+		assert_eq!(doc_attr.source_type, "http");
+
+		// Parse the JSON content to verify it's valid
+		let json_value: serde_json::Value = serde_json::from_str(&doc_attr.json_content).unwrap();
+		assert_eq!(json_value["src"], "http");
+		assert_eq!(json_value["url"], "https://example.com");
+		assert_eq!(json_value["match"]["type"], "regex");
+		assert_eq!(json_value["match"]["pattern"], ".*");
+	}
+
+	#[test]
+	fn test_roundtrip_kwargs_to_json_to_kwargs() {
+		let mut original_kwargs = HashMap::new();
+		original_kwargs.insert("url".to_string(), json!("https://example.com"));
+		original_kwargs.insert("match".to_string(), json!("regex:.*"));
+		original_kwargs.insert("cache".to_string(), json!("enabled"));
+
+		// Create HttpMatch from kwargs
+		let http_match = HttpMatch::from_kwarg_json(&original_kwargs).unwrap();
+
+		// Convert back to JSON
+		let json_map = http_match.to_standard_json().unwrap();
+
+		// Verify the JSON contains expected fields
+		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "http");
+		assert_eq!(json_map.get("url").unwrap().as_str().unwrap(), "https://example.com");
+
+		let match_obj = json_map.get("match").unwrap().as_object().unwrap();
+		assert_eq!(match_obj.get("type").unwrap().as_str().unwrap(), "regex");
+		assert_eq!(match_obj.get("pattern").unwrap().as_str().unwrap(), ".*");
+	}
+}
