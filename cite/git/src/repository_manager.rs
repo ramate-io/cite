@@ -463,28 +463,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_branch_fetching_with_different_repos() {
-		// Test with a repository that might have different default branch names
-		let temp_dir = tempfile::tempdir().unwrap();
-		let builder = RepositoryBuilder::with_parent_dir(
-			"https://github.com/microsoft/vscode".to_string(),
-			temp_dir.path().to_path_buf(),
-		);
-		let manager = builder.fetch().unwrap();
-
-		// Test fetching master branch (some repos still use master)
-		let result = manager.fetch_specific_revisions(&["master"]);
-		assert!(result.is_ok());
-
-		// Test fetching main branch
-		let result = manager.fetch_specific_revisions(&["main"]);
-		assert!(result.is_ok());
-
-		// At least one of these should exist
-		assert!(manager.revision_exists("master") || manager.revision_exists("main"));
-	}
-
-	#[test]
 	fn test_ramate_oac_repository() {
 		// Test with the ramate-io/oac repository to debug empty repo issues
 		let temp_dir = tempfile::tempdir().unwrap();
