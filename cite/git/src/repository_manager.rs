@@ -68,24 +68,23 @@ impl RepositoryBuilder {
 		let repo_dir_name = Self::generate_repo_dir_name(&self.remote_url);
 		let repo_path = target_dir.join(repo_dir_name);
 
-		// If the repository already exists, check if we need to update it
+		// Always try to ensure the repository is available
+		// This handles both initial cloning and updating existing repositories
+		let mut callbacks = RemoteCallbacks::new();
+		callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default());
+
+		let mut fetch_options = FetchOptions::new();
+		fetch_options.remote_callbacks(callbacks);
+
 		if repo_path.exists() {
-			// Try to update the repository to get latest changes
-			// This is a best-effort operation - if it fails, we'll still use the existing repo
+			// Repository exists, try to update it
 			let _ = Self::update_existing_repository(&repo_path, &self.remote_url);
 		} else {
-			// Clone the repository
-			let mut callbacks = RemoteCallbacks::new();
-			callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default());
-
-			let mut fetch_options = FetchOptions::new();
-			fetch_options.remote_callbacks(callbacks);
-
+			// Try to clone the repository
 			match Repository::clone(&self.remote_url, &repo_path) {
 				Ok(repo) => {
 					// After cloning, fetch common branches to ensure we have basic coverage
 					if let Ok(mut remote) = repo.find_remote("origin") {
-						// Only fetch main/master branches initially - other branches will be fetched as needed
 						let common_branches = [
 							"refs/heads/main:refs/remotes/origin/main",
 							"refs/heads/master:refs/remotes/origin/master",
@@ -94,28 +93,40 @@ impl RepositoryBuilder {
 					}
 				}
 				Err(e) => {
-					// Check if this is the "exists and is not an empty directory" error
+					// If clone fails due to directory existing, that's fine - we'll use the existing repo
 					if e.code() == git2::ErrorCode::Exists
 						&& e.message().contains("exists and is not an empty directory")
 					{
-						// simply continue on as the repo already exists
+						// Repository already exists, continue
 					} else {
 						return Err(GitSourceError::Git(e));
 					}
 				}
-			};
+			}
+		}
+
+		// Verify the repository is accessible
+		if let Err(e) = Repository::open(&repo_path) {
+			return Err(GitSourceError::Git(e));
 		}
 
 		Ok(RepositoryManager::new(repo_path))
 	}
 
-	/// Update an existing repository
+	/// Update an existing repository (best-effort operation)
 	fn update_existing_repository(
 		repo_path: &Path,
 		remote_url: &str,
 	) -> Result<(), GitSourceError> {
-		let repo = Repository::open(repo_path).map_err(|e| GitSourceError::Git(e))?;
-		Self::fetch_latest_changes(&repo, remote_url)
+		// Try to open the repository - if it fails, that's okay, we'll handle it later
+		let repo = match Repository::open(repo_path) {
+			Ok(repo) => repo,
+			Err(_) => return Ok(()), // Repository not accessible, skip update
+		};
+
+		// Try to fetch latest changes - if it fails, that's okay too
+		let _ = Self::fetch_latest_changes(&repo, remote_url);
+		Ok(())
 	}
 
 	/// Fetch latest changes for an existing repository
@@ -202,7 +213,7 @@ impl RepositoryManager {
 
 	/// Get the repository at the managed path
 	pub fn get_repository(&self) -> Result<Repository, GitSourceError> {
-		self.with_retry(|| Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e)))
+		Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))
 	}
 
 	/// Retry git operations that fail due to lock conflicts
