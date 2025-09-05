@@ -43,6 +43,18 @@ impl SourceUi<ReferencedHttp, CurrentHttp, HttpDiff> for HttpMatch {
 
 		Ok(AboveDocAttr::new(json_content, "http".to_string()))
 	}
+
+	fn is_valid_attr_key(attr_key: &str) -> bool {
+		match attr_key {
+			// Direct serde fields
+			"matches" | "source_url" | "cache_path" | "id" | "cache" | "cache_behavior" |
+			// Legacy ergonomic fields
+			"url" | "match" | "pattern" | "selector" | "match_type" | "fragment" |
+			// Citation-level fields
+			"src" | "reason" | "level" | "annotation" => true,
+			_ => false,
+		}
+	}
 }
 
 impl HttpMatch {
@@ -549,5 +561,38 @@ mod tests {
 		let http_match = HttpMatch::from_kwarg_json(&kwargs).unwrap();
 		assert_eq!(http_match.source_url.as_str(), "https://example.com");
 		assert!(matches!(http_match.matches, MatchExpression::Regex(_)));
+	}
+
+	#[test]
+	fn test_is_valid_attr_key() {
+		// Test valid direct serde fields
+		assert!(HttpMatch::is_valid_attr_key("matches"));
+		assert!(HttpMatch::is_valid_attr_key("source_url"));
+		assert!(HttpMatch::is_valid_attr_key("cache_path"));
+		assert!(HttpMatch::is_valid_attr_key("id"));
+		assert!(HttpMatch::is_valid_attr_key("cache"));
+		assert!(HttpMatch::is_valid_attr_key("cache_behavior"));
+
+		// Test valid legacy ergonomic fields
+		assert!(HttpMatch::is_valid_attr_key("url"));
+		assert!(HttpMatch::is_valid_attr_key("match"));
+		assert!(HttpMatch::is_valid_attr_key("pattern"));
+		assert!(HttpMatch::is_valid_attr_key("selector"));
+		assert!(HttpMatch::is_valid_attr_key("match_type"));
+		assert!(HttpMatch::is_valid_attr_key("fragment"));
+
+		// Test valid citation-level fields
+		assert!(HttpMatch::is_valid_attr_key("src"));
+		assert!(HttpMatch::is_valid_attr_key("reason"));
+		assert!(HttpMatch::is_valid_attr_key("level"));
+		assert!(HttpMatch::is_valid_attr_key("annotation"));
+
+		// Test invalid fields
+		assert!(!HttpMatch::is_valid_attr_key("invalid_attr"));
+		assert!(!HttpMatch::is_valid_attr_key("unknown_field"));
+		assert!(!HttpMatch::is_valid_attr_key("remote"));
+		assert!(!HttpMatch::is_valid_attr_key("path"));
+		assert!(!HttpMatch::is_valid_attr_key("same"));
+		assert!(!HttpMatch::is_valid_attr_key("changed"));
 	}
 }

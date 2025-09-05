@@ -43,6 +43,18 @@ impl SourceUi<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 
 		Ok(AboveDocAttr::new(json_content, "git".to_string()))
 	}
+
+	fn is_valid_attr_key(attr_key: &str) -> bool {
+		match attr_key {
+			// Direct serde fields
+			"id" | "remote" | "path_pattern" | "referenced_revision" | "current_revision" | "name" | "formatted_url" | "repository_builder" |
+			// Legacy ergonomic fields
+			"ref_rev" | "cur_rev" | "path" |
+			// Citation-level fields
+			"src" | "reason" | "level" | "annotation" => true,
+			_ => false,
+		}
+	}
 }
 
 impl GitSource {
@@ -437,5 +449,37 @@ mod tests {
 		assert_eq!(git_source.current_revision, "def456");
 		assert_eq!(git_source.path_pattern.to_string(), "src/main.rs");
 		assert_eq!(git_source.name, "test-name");
+	}
+
+	#[test]
+	fn test_is_valid_attr_key() {
+		// Test valid direct serde fields
+		assert!(GitSource::is_valid_attr_key("id"));
+		assert!(GitSource::is_valid_attr_key("remote"));
+		assert!(GitSource::is_valid_attr_key("path_pattern"));
+		assert!(GitSource::is_valid_attr_key("referenced_revision"));
+		assert!(GitSource::is_valid_attr_key("current_revision"));
+		assert!(GitSource::is_valid_attr_key("name"));
+		assert!(GitSource::is_valid_attr_key("formatted_url"));
+		assert!(GitSource::is_valid_attr_key("repository_builder"));
+
+		// Test valid legacy ergonomic fields
+		assert!(GitSource::is_valid_attr_key("ref_rev"));
+		assert!(GitSource::is_valid_attr_key("cur_rev"));
+		assert!(GitSource::is_valid_attr_key("path"));
+
+		// Test valid citation-level fields
+		assert!(GitSource::is_valid_attr_key("src"));
+		assert!(GitSource::is_valid_attr_key("reason"));
+		assert!(GitSource::is_valid_attr_key("level"));
+		assert!(GitSource::is_valid_attr_key("annotation"));
+
+		// Test invalid fields
+		assert!(!GitSource::is_valid_attr_key("invalid_attr"));
+		assert!(!GitSource::is_valid_attr_key("unknown_field"));
+		assert!(!GitSource::is_valid_attr_key("url"));
+		assert!(!GitSource::is_valid_attr_key("match"));
+		assert!(!GitSource::is_valid_attr_key("same"));
+		assert!(!GitSource::is_valid_attr_key("changed"));
 	}
 }

@@ -48,6 +48,18 @@ impl SourceUi<ReferencedString, CurrentString, StringDiff> for MockSource {
 
 		Ok(AboveDocAttr::new(json_content, "mock".to_string()))
 	}
+
+	fn is_valid_attr_key(attr_key: &str) -> bool {
+		match attr_key {
+			// Direct serde fields
+			"id" | "referenced_content" | "current_content" |
+			// Legacy ergonomic fields
+			"same" | "changed" | "referenced" | "current" |
+			// Citation-level fields
+			"src" | "reason" | "level" | "annotation" => true,
+			_ => false,
+		}
+	}
 }
 
 impl MockSource {
@@ -318,7 +330,7 @@ mod tests {
 
 		// Get the serialized format
 		let json_map = original.to_standard_json().unwrap();
-
+		
 		// Convert to kwargs (remove src field)
 		let mut kwargs = HashMap::new();
 		for (key, value) in json_map {
@@ -331,5 +343,32 @@ mod tests {
 		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
 		assert_eq!(mock_source.referenced_content, "old content");
 		assert_eq!(mock_source.current_content, "new content");
+	}
+
+	#[test]
+	fn test_is_valid_attr_key() {
+		// Test valid direct serde fields
+		assert!(MockSource::is_valid_attr_key("id"));
+		assert!(MockSource::is_valid_attr_key("referenced_content"));
+		assert!(MockSource::is_valid_attr_key("current_content"));
+
+		// Test valid legacy ergonomic fields
+		assert!(MockSource::is_valid_attr_key("same"));
+		assert!(MockSource::is_valid_attr_key("changed"));
+		assert!(MockSource::is_valid_attr_key("referenced"));
+		assert!(MockSource::is_valid_attr_key("current"));
+
+		// Test valid citation-level fields
+		assert!(MockSource::is_valid_attr_key("src"));
+		assert!(MockSource::is_valid_attr_key("reason"));
+		assert!(MockSource::is_valid_attr_key("level"));
+		assert!(MockSource::is_valid_attr_key("annotation"));
+
+		// Test invalid fields
+		assert!(!MockSource::is_valid_attr_key("invalid_attr"));
+		assert!(!MockSource::is_valid_attr_key("unknown_field"));
+		assert!(!MockSource::is_valid_attr_key("remote"));
+		assert!(!MockSource::is_valid_attr_key("url"));
+		assert!(!MockSource::is_valid_attr_key("path"));
 	}
 }

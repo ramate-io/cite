@@ -66,4 +66,8 @@ where
 	/// Convert the source to a format suitable for `#[cite(above)]` macro attributes
 	/// This should produce content that can be embedded in doc comments
 	fn to_above_doc_attr(&self) -> Result<AboveDocAttr, SourceUiError>;
+
+	/// Check if an attribute key is valid for this source type
+	/// This is used for validation and error reporting in procedural macros
+	fn is_valid_attr_key(attr_key: &str) -> bool;
 }
