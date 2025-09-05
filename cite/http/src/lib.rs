@@ -319,7 +319,7 @@ impl Diff for HttpDiff {
 }
 
 /// Http match source for checking committed http references
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct HttpMatch {
 	pub matches: MatchExpression,
 	pub source_url: SourceUrl,
