@@ -82,7 +82,16 @@ impl RepositoryBuilder {
 			fetch_options.remote_callbacks(callbacks);
 
 			match Repository::clone(&self.remote_url, &repo_path) {
-				Ok(_repo) => {}
+				Ok(repo) => {
+					// After cloning, fetch all branches and refs to ensure we have everything
+					if let Ok(mut remote) = repo.find_remote("origin") {
+						let _ = remote.fetch(
+							&["refs/heads/*:refs/remotes/origin/*", "refs/tags/*:refs/tags/*"],
+							Some(&mut fetch_options),
+							None,
+						);
+					}
+				}
 				Err(e) => {
 					// Check if this is the "exists and is not an empty directory" error
 					if e.code() == git2::ErrorCode::Exists
@@ -206,6 +215,15 @@ impl RepositoryManager {
 		let mut fetch_options = FetchOptions::new();
 		fetch_options.remote_callbacks(callbacks);
 
+		// First, ensure we have all branches and refs
+		remote
+			.fetch(
+				&["refs/heads/*:refs/remotes/origin/*", "refs/tags/*:refs/tags/*"],
+				Some(&mut fetch_options),
+				None,
+			)
+			.map_err(|e| GitSourceError::Git(e))?;
+
 		// For each revision, try to fetch it if it doesn't exist locally
 		for revision in revisions {
 			if !self.revision_exists(revision) {
@@ -216,6 +234,44 @@ impl RepositoryManager {
 				// Note: This is a best-effort approach - some commits might not be fetchable
 				// if they're not reachable from any ref
 				let _ = remote.fetch(&[&refspec], Some(&mut fetch_options), None);
+			}
+		}
+
+		// Ensure we have the complete tree for each revision
+		for revision in revisions {
+			if self.revision_exists(revision) {
+				// Try to resolve the revision to ensure we have the complete tree
+				if let Ok(obj) = repo.revparse_single(revision) {
+					match obj.kind() {
+						Some(git2::ObjectType::Commit) => {
+							// For commits, ensure we have the tree
+							if let Ok(commit) = obj.peel_to_commit() {
+								let _tree = commit.tree().map_err(|e| GitSourceError::Git(e))?;
+								// Tree exists, we're good
+							}
+						}
+						Some(git2::ObjectType::Tag) => {
+							// For tags, peel to commit and ensure we have the tree
+							if let Ok(tag) = obj.peel_to_tag() {
+								if let Ok(target) = tag.target() {
+									if let Ok(commit) = target.peel_to_commit() {
+										let _tree =
+											commit.tree().map_err(|e| GitSourceError::Git(e))?;
+										// Tree exists, we're good
+									}
+								}
+							}
+						}
+						Some(git2::ObjectType::Tree) => {
+							// For trees, we already have the tree
+							let _tree = obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?;
+						}
+						_ => {
+							// Other object types, try to resolve
+							let _ = repo.revparse_single(revision);
+						}
+					}
+				}
 			}
 		}
 
