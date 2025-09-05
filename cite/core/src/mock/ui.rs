@@ -20,14 +20,22 @@ impl SourceUi<ReferencedString, CurrentString, StringDiff> for MockSource {
 	}
 
 	fn to_standard_json(&self) -> Result<Map<String, Value>, SourceUiError> {
-		let mut map = Map::new();
+		// Use direct serialization to JSON, then convert to Map
+		let json_value = serde_json::to_value(self).map_err(|e| {
+			SourceUiError::Serialization(format!("Failed to serialize MockSource: {}", e))
+		})?;
+
+		let mut map = json_value
+			.as_object()
+			.ok_or_else(|| {
+				SourceUiError::Serialization(
+					"MockSource serialization did not produce an object".to_string(),
+				)
+			})?
+			.clone();
+
+		// Add the src field for consistency
 		map.insert("src".to_string(), Value::String("mock".to_string()));
-		map.insert(
-			"referenced_content".to_string(),
-			Value::String(self.referenced_content.clone()),
-		);
-		map.insert("current_content".to_string(), Value::String(self.current_content.clone()));
-		map.insert("name".to_string(), Value::String(self.id.as_str().to_string()));
 
 		Ok(map)
 	}
@@ -115,5 +123,213 @@ impl MockSource {
 		}
 
 		Ok(source)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use serde_json::json;
+
+	#[test]
+	fn test_from_kwarg_json_basic() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("referenced_content".to_string(), json!("old content"));
+		kwargs.insert("current_content".to_string(), json!("new content"));
+		kwargs.insert("id".to_string(), json!("test-id"));
+
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.referenced_content, "old content");
+		assert_eq!(mock_source.current_content, "new content");
+		assert_eq!(mock_source.id.as_str(), "test-id");
+	}
+
+	#[test]
+	fn test_from_kwarg_json_legacy_same() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("same".to_string(), json!("same content"));
+
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.referenced_content, "same content");
+		assert_eq!(mock_source.current_content, "same content");
+	}
+
+	#[test]
+	fn test_from_kwarg_json_legacy_changed() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("changed".to_string(), json!(["old", "new"]));
+
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.referenced_content, "old");
+		assert_eq!(mock_source.current_content, "new");
+	}
+
+	#[test]
+	fn test_from_kwarg_json_legacy_referenced() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("referenced".to_string(), json!("referenced content"));
+
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.referenced_content, "referenced content");
+		assert_eq!(mock_source.current_content, "referenced content");
+	}
+
+	#[test]
+	fn test_from_kwarg_json_with_name() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("referenced_content".to_string(), json!("old content"));
+		kwargs.insert("current_content".to_string(), json!("new content"));
+		kwargs.insert("name".to_string(), json!("custom-name"));
+
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.id.as_str(), "custom-name");
+	}
+
+	#[test]
+	fn test_from_kwarg_json_missing_content() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("current_content".to_string(), json!("new content"));
+
+		let result = MockSource::from_kwarg_json(&kwargs);
+		assert!(result.is_err());
+		assert!(matches!(result.unwrap_err(), SourceUiError::MissingParameter(_)));
+	}
+
+	#[test]
+	fn test_from_kwarg_json_invalid_changed() {
+		let mut kwargs = HashMap::new();
+		kwargs.insert("changed".to_string(), json!(["single"]));
+
+		let result = MockSource::from_kwarg_json(&kwargs);
+		assert!(result.is_err());
+		assert!(matches!(result.unwrap_err(), SourceUiError::InvalidParameter(_)));
+	}
+
+	#[test]
+	fn test_to_standard_json_basic() {
+		let mock_source = MockSource::new("old content".to_string(), "new content".to_string());
+
+		let json_map = mock_source.to_standard_json().unwrap();
+		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "mock");
+		assert_eq!(json_map.get("referenced_content").unwrap().as_str().unwrap(), "old content");
+		assert_eq!(json_map.get("current_content").unwrap().as_str().unwrap(), "new content");
+		assert!(json_map.contains_key("id"));
+	}
+
+	#[test]
+	fn test_to_standard_json_with_custom_id() {
+		let mut mock_source = MockSource::new("old content".to_string(), "new content".to_string());
+		mock_source.id = crate::Id::new("custom-id".to_string());
+
+		let json_map = mock_source.to_standard_json().unwrap();
+		assert_eq!(json_map.get("id").unwrap().as_str().unwrap(), "custom-id");
+	}
+
+	#[test]
+	fn test_to_above_doc_attr() {
+		let mock_source = MockSource::new("old content".to_string(), "new content".to_string());
+
+		let doc_attr = mock_source.to_above_doc_attr().unwrap();
+		assert_eq!(doc_attr.source_type, "mock");
+
+		// Parse the JSON content to verify it's valid
+		let json_value: serde_json::Value = serde_json::from_str(&doc_attr.json_content).unwrap();
+		assert_eq!(json_value["src"], "mock");
+		assert_eq!(json_value["referenced_content"], "old content");
+		assert_eq!(json_value["current_content"], "new content");
+	}
+
+	#[test]
+	fn test_roundtrip_kwargs_to_json_to_kwargs() {
+		let mut original_kwargs = HashMap::new();
+		original_kwargs.insert("referenced_content".to_string(), json!("old content"));
+		original_kwargs.insert("current_content".to_string(), json!("new content"));
+		original_kwargs.insert("id".to_string(), json!("test-id"));
+
+		// Create MockSource from kwargs
+		let mock_source = MockSource::from_kwarg_json(&original_kwargs).unwrap();
+
+		// Convert back to JSON
+		let json_map = mock_source.to_standard_json().unwrap();
+
+		// Verify the JSON contains expected fields
+		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "mock");
+		assert_eq!(json_map.get("referenced_content").unwrap().as_str().unwrap(), "old content");
+		assert_eq!(json_map.get("current_content").unwrap().as_str().unwrap(), "new content");
+		assert_eq!(json_map.get("id").unwrap().as_str().unwrap(), "test-id");
+	}
+
+	#[test]
+	fn test_direct_serialization_deserialization() {
+		// Create a MockSource using the constructor
+		let original = MockSource::new("old content".to_string(), "new content".to_string());
+
+		// Serialize to JSON using direct serialization
+		let json_map = original.to_standard_json().unwrap();
+
+		// Verify it contains the expected fields from direct serialization
+		assert_eq!(json_map.get("src").unwrap().as_str().unwrap(), "mock");
+		assert!(json_map.contains_key("referenced_content"));
+		assert!(json_map.contains_key("current_content"));
+		assert!(json_map.contains_key("id"));
+	}
+
+	#[test]
+	fn test_direct_deserialization_from_serialized_json() {
+		// Create a MockSource using the constructor
+		let original = MockSource::new("old content".to_string(), "new content".to_string());
+
+		// Serialize to JSON
+		let json_map = original.to_standard_json().unwrap();
+
+		// Convert back to HashMap (simulating kwargs)
+		let mut kwargs = HashMap::new();
+		for (key, value) in json_map {
+			if key != "src" {
+				// Remove src field as it's not part of the struct
+				kwargs.insert(key, value);
+			}
+		}
+
+		// Try to deserialize using direct deserialization
+		let deserialized = MockSource::from_kwarg_json(&kwargs).unwrap();
+
+		// Verify the deserialized version matches the original
+		assert_eq!(deserialized.referenced_content, original.referenced_content);
+		assert_eq!(deserialized.current_content, original.current_content);
+		assert_eq!(deserialized.id.as_str(), original.id.as_str());
+	}
+
+	#[test]
+	fn test_fallback_to_legacy_syntax() {
+		// Test that legacy syntax still works when direct deserialization fails
+		let mut kwargs = HashMap::new();
+		kwargs.insert("same".to_string(), json!("same content"));
+
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.referenced_content, "same content");
+		assert_eq!(mock_source.current_content, "same content");
+	}
+
+	#[test]
+	fn test_direct_deserialization_from_standard_format() {
+		// Create a MockSource and serialize it to get the exact format
+		let original = MockSource::new("old content".to_string(), "new content".to_string());
+
+		// Get the serialized format
+		let json_map = original.to_standard_json().unwrap();
+
+		// Convert to kwargs (remove src field)
+		let mut kwargs = HashMap::new();
+		for (key, value) in json_map {
+			if key != "src" {
+				kwargs.insert(key, value);
+			}
+		}
+
+		// This should use direct deserialization
+		let mock_source = MockSource::from_kwarg_json(&kwargs).unwrap();
+		assert_eq!(mock_source.referenced_content, "old content");
+		assert_eq!(mock_source.current_content, "new content");
 	}
 }

@@ -1,6 +1,7 @@
 pub mod ui;
 
 use crate::{Comparison, Content, Current, Diff, Id, Referenced, Source, SourceError};
+use serde::{Deserialize, Serialize};
 
 // ==============================================================================
 // Concrete Implementations for Testing/Mock Usage
@@ -50,7 +51,7 @@ impl Current<ReferencedString, StringDiff> for CurrentString {
 }
 
 /// Mock source for testing - compares a static "referenced" string with a "current" string
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MockSource {
 	pub id: Id,
 	pub referenced_content: String,
