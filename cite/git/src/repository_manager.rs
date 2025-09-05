@@ -202,11 +202,62 @@ impl RepositoryManager {
 
 	/// Get the repository at the managed path
 	pub fn get_repository(&self) -> Result<Repository, GitSourceError> {
+		// Wait for any active locks to be released before opening the repository
+		self.wait_for_locks()?;
 		Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))
+	}
+
+	/// Wait for git lock files to be released by other processes
+	fn wait_for_locks(&self) -> Result<(), GitSourceError> {
+		let git_dir = self.repo_path.join(".git");
+		if !git_dir.exists() {
+			return Ok(());
+		}
+
+		// List of common git lock files
+		let lock_files = [
+			"config.lock",
+			"index.lock",
+			"HEAD.lock",
+			"refs/heads/main.lock",
+			"refs/heads/master.lock",
+			"refs/remotes/origin/main.lock",
+			"refs/remotes/origin/master.lock",
+		];
+
+		let max_wait_time = std::time::Duration::from_secs(15); // Maximum wait time
+		let check_interval = std::time::Duration::from_millis(20); // Check every 100ms
+		let start_time = std::time::Instant::now();
+
+		while start_time.elapsed() < max_wait_time {
+			let mut locks_found = false;
+
+			for lock_file in &lock_files {
+				let lock_path = git_dir.join(lock_file);
+				if lock_path.exists() {
+					locks_found = true;
+					break;
+				}
+			}
+
+			if !locks_found {
+				return Ok(()); // No locks found, we can proceed
+			}
+
+			// Wait a bit and check again
+			std::thread::sleep(check_interval);
+		}
+
+		// If we've waited too long, proceed anyway - the operation might still succeed
+		// or fail with a more informative error
+		Ok(())
 	}
 
 	/// Fetch specific revisions that are needed
 	pub fn fetch_specific_revisions(&self, revisions: &[&str]) -> Result<(), GitSourceError> {
+		// Wait for any active locks to be released before opening the repository
+		self.wait_for_locks()?;
+
 		let repo = Repository::open(&self.repo_path).map_err(|e| GitSourceError::Git(e))?;
 		let mut remote = repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
 
