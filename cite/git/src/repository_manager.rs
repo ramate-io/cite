@@ -164,8 +164,30 @@ impl RepositoryManager {
 			Err(_) => return false,
 		};
 
-		let result = repo.revparse_single(revision).is_ok();
-		result
+		// First try the revision as-is
+		if repo.revparse_single(revision).is_ok() {
+			return true;
+		}
+
+		// If it's a branch name, try common branch reference patterns
+		if !revision.starts_with("refs/") && !revision.chars().all(|c| c.is_ascii_hexdigit()) {
+			// Try origin/branch pattern
+			if repo.revparse_single(&format!("origin/{}", revision)).is_ok() {
+				return true;
+			}
+			
+			// Try refs/heads/branch pattern
+			if repo.revparse_single(&format!("refs/heads/{}", revision)).is_ok() {
+				return true;
+			}
+			
+			// Try refs/remotes/origin/branch pattern
+			if repo.revparse_single(&format!("refs/remotes/origin/{}", revision)).is_ok() {
+				return true;
+			}
+		}
+
+		false
 	}
 
 	/// Get the repository at the managed path
@@ -187,14 +209,40 @@ impl RepositoryManager {
 		// For each revision, try to fetch it if it doesn't exist locally
 		for revision in revisions {
 			if !self.revision_exists(revision) {
-				// Try to fetch this specific commit
+				// Convert revision to proper refspec format
+				let refspec = self.convert_to_refspec(revision);
+				
+				// Try to fetch this specific revision
 				// Note: This is a best-effort approach - some commits might not be fetchable
 				// if they're not reachable from any ref
-				let _ = remote.fetch(&[revision], Some(&mut fetch_options), None);
+				let _ = remote.fetch(&[&refspec], Some(&mut fetch_options), None);
 			}
 		}
 
 		Ok(())
+	}
+
+	/// Convert a revision string to a proper refspec format for fetching
+	fn convert_to_refspec(&self, revision: &str) -> String {
+		// If it looks like a commit hash (40 characters, hex), fetch it directly
+		if revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit()) {
+			return revision.to_string();
+		}
+		
+		// If it looks like a short commit hash (7-39 characters, hex), fetch it directly
+		if revision.len() >= 7 && revision.len() <= 39 && revision.chars().all(|c| c.is_ascii_hexdigit()) {
+			return revision.to_string();
+		}
+		
+		// For branch names, use the proper refspec format
+		// This handles both local branch names and remote branch names
+		if !revision.starts_with("refs/") {
+			// Try origin/branch first, then refs/heads/branch
+			format!("refs/heads/{}:refs/remotes/origin/{}", revision, revision)
+		} else {
+			// Already a refspec, use as-is
+			revision.to_string()
+		}
 	}
 }
 
@@ -356,5 +404,77 @@ mod tests {
 		// Verify both revisions exist
 		assert!(manager.revision_exists("main"));
 		assert!(manager.revision_exists("2bcceb14934dbe0803ddb70bc8952a0c33f931e2"));
+	}
+
+	#[test]
+	fn test_convert_to_refspec() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/ramate-io/cite".to_string(),
+			temp_dir.path().to_path_buf(),
+		);
+		let manager = builder.fetch().unwrap();
+
+		// Test commit hash (40 characters)
+		let refspec = manager.convert_to_refspec("94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(refspec, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+
+		// Test short commit hash (7 characters)
+		let refspec = manager.convert_to_refspec("94dab27");
+		assert_eq!(refspec, "94dab27");
+
+		// Test branch name
+		let refspec = manager.convert_to_refspec("main");
+		assert_eq!(refspec, "refs/heads/main:refs/remotes/origin/main");
+
+		// Test branch name with special characters
+		let refspec = manager.convert_to_refspec("feature/new-feature");
+		assert_eq!(refspec, "refs/heads/feature/new-feature:refs/remotes/origin/feature/new-feature");
+
+		// Test already formatted refspec
+		let refspec = manager.convert_to_refspec("refs/heads/main");
+		assert_eq!(refspec, "refs/heads/main");
+	}
+
+	#[test]
+	fn test_revision_exists_branch_patterns() {
+		let temp_dir = tempfile::tempdir().unwrap();
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/ramate-io/cite".to_string(),
+			temp_dir.path().to_path_buf(),
+		);
+		let manager = builder.fetch().unwrap();
+
+		// Test that main branch exists (should work with the improved detection)
+		assert!(manager.revision_exists("main"));
+
+		// Test commit hash exists
+		assert!(manager.revision_exists("94dab273cf6c2abe8742d6d459ad45c96ca9b694"));
+
+		// Test that non-existent revision returns false
+		assert!(!manager.revision_exists("nonexistent-branch"));
+		assert!(!manager.revision_exists("nonexistent-commit-hash"));
+	}
+
+	#[test]
+	fn test_branch_fetching_with_different_repos() {
+		// Test with a repository that might have different default branch names
+		let temp_dir = tempfile::tempdir().unwrap();
+		let builder = RepositoryBuilder::with_parent_dir(
+			"https://github.com/microsoft/vscode".to_string(),
+			temp_dir.path().to_path_buf(),
+		);
+		let manager = builder.fetch().unwrap();
+
+		// Test fetching master branch (some repos still use master)
+		let result = manager.fetch_specific_revisions(&["master"]);
+		assert!(result.is_ok());
+
+		// Test fetching main branch
+		let result = manager.fetch_specific_revisions(&["main"]);
+		assert!(result.is_ok());
+
+		// At least one of these should exist
+		assert!(manager.revision_exists("master") || manager.revision_exists("main"));
 	}
 }

@@ -857,5 +857,65 @@ mod tests {
 		Ok(())
 	}
 
+	#[test]
+	fn test_git_source_with_branch_names() -> Result<(), anyhow::Error> {
+		// Test creating GitSource with branch names instead of commit hashes
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"README.md",
+			"main",  // Using branch name instead of commit hash
+			"main",  // Using branch name instead of commit hash
+			None
+		)?;
+
+		assert_eq!(source.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(source.path_pattern.path, "README.md");
+		assert_eq!(source.referenced_revision, "main");
+		assert_eq!(source.current_revision, "main");
+
+		// Test that we can get referenced content with branch names
+		let referenced_content = source.get_referenced()?;
+		assert_eq!(referenced_content.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(referenced_content.path_pattern.path, "README.md");
+		assert_eq!(referenced_content.revision, "main");
+
+		// Test that we can get current content with branch names
+		let current_content = source.get_current()?;
+		assert_eq!(current_content.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(current_content.path_pattern.path, "README.md");
+		assert_eq!(current_content.revision, "main");
+
+		// Test that diff works with branch names
+		let _diff_result = current_content.diff(&referenced_content);
+		// Should not panic even if there are no changes
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_mixed_revisions() -> Result<(), anyhow::Error> {
+		// Test creating GitSource with mixed revision types (branch name vs commit hash)
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"README.md",
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",  // Commit hash
+			"main",  // Branch name
+			None
+		)?;
+
+		assert_eq!(source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(source.current_revision, "main");
+
+		// Test that we can get both types of content
+		let referenced_content = source.get_referenced()?;
+		let current_content = source.get_current()?;
+
+		// Test that diff works with mixed revision types
+		let _diff_result = current_content.diff(&referenced_content);
+		// Should not panic
+
+		Ok(())
+	}
+
 	
 }
