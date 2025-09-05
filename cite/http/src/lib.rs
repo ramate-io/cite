@@ -739,7 +739,7 @@ mod tests {
 		// Using uuidtools.com for reliable UUID generation
 		let http_match = HttpMatch::cached(
 			"https://www.uuidtools.com/api/generate/v4/count/2",
-			r#"\["([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})"\]"#,
+			r#"\["([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})","([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})"\]"#,
 		)?;
 
 		// flush the cache to make sure the behavior is new
