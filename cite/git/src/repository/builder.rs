@@ -1,9 +1,5 @@
 use super::lock::Lock;
 use crate::GitSourceError;
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-
-use super::{Repository, RepositoryManager};
 
 /// Builder for fetching and preparing git repositories with all necessary information
 #[derive(Debug, Clone)]
