@@ -1,10 +1,10 @@
 pub mod ui;
 pub mod line_range;
-pub mod repository_manager;
+pub mod repository;
 
 use git2::{DiffFormat, DiffOptions};
 pub use line_range::LineRange;
-use repository_manager::{RepositoryBuilder, RepositoryManager};
+use repository::{RepositoryBuilder, RepositoryManager};
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,9 @@ pub enum GitSourceError {
 
 	#[error("Invalid path: {0}")]
 	InvalidPath(String),
+
+	#[error("Failed to create lock file: {0}")]
+	CreateLockFile(#[source] std::io::Error),
 }
 
 impl From<GitSourceError> for SourceError {

@@ -17,6 +17,7 @@ regex = { workspace = true }
 thiserror = { workspace = true }
 git2 = { workspace = true }
 glob = { workspace = true }
+file-lock = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
