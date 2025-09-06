@@ -5,14 +5,14 @@ use std::ops::{Deref, DerefMut};
 pub struct WriteGuard<'a> {
 	_repository: &'a mut Repository,
 	_lock_file: &'a mut LockFile, // Keeps the lock alive for lifetime
-	_lock: &'a mut FileLock,
+	_lock: FileLock,
 }
 
 impl<'a> WriteGuard<'a> {
 	pub fn new(
 		repository: &'a mut Repository,
 		lock_file: &'a mut LockFile,
-		lock: &'a mut FileLock,
+		lock: FileLock,
 	) -> Self {
 		Self { _repository: repository, _lock_file: lock_file, _lock: lock }
 	}
