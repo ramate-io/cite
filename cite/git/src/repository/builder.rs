@@ -14,7 +14,7 @@ pub struct RepositoryBuilder {
 
 impl RepositoryBuilder {
 	/// Create a new repository builder
-	pub fn new(repository: super::Repository, lock_file: super::lock::LockFile) -> Self {
+	pub(crate) fn new(repository: super::Repository, lock_file: super::lock::LockFile) -> Self {
 		let locked_repository = Lock::new(repository, lock_file);
 		Self { locked_repository, revisions: Vec::new() }
 	}

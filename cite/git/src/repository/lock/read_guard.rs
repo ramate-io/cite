@@ -10,7 +10,7 @@ pub struct ReadGuard<'a> {
 }
 
 impl<'a> ReadGuard<'a> {
-	pub fn new(repository: &'a Repository, lock_file: &'a LockFile, lock: FileLock) -> Self {
+	pub(crate) fn new(repository: &'a Repository, lock_file: &'a LockFile, lock: FileLock) -> Self {
 		Self { _repository: repository, _lock_file: lock_file, _lock: lock }
 	}
 }

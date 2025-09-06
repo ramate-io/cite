@@ -9,7 +9,7 @@ pub struct WriteGuard<'a> {
 }
 
 impl<'a> WriteGuard<'a> {
-	pub fn new(
+	pub(crate) fn new(
 		repository: &'a mut Repository,
 		lock_file: &'a mut LockFile,
 		lock: FileLock,

@@ -299,27 +299,6 @@ impl GitDiff {
 	}
 }
 
-impl CurrentGitContent {
-	/// Check if the path pattern represents a directory (not a file)
-	fn is_directory_path(&self) -> bool {
-		// A path is considered a directory if:
-		// 1. It ends with '/' (explicit directory)
-		// 2. It doesn't contain a file extension and doesn't look like a file
-		// 3. It's not a glob pattern
-		if self.path_pattern.path.ends_with('/') {
-			return true;
-		}
-		
-		if self.path_pattern.glob.is_some() {
-			return false; // Glob patterns are not directories
-		}
-		
-		// Check if it looks like a directory path (no file extension, not a single filename)
-		let path = &self.path_pattern.path;
-		!path.contains('.') && path.contains('/') && !path.ends_with(".md") && !path.ends_with(".rs") && !path.ends_with(".txt")
-	}
-}
-
 impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 	fn diff(&self, other: &ReferencedGitContent) -> Result<GitDiff, SourceError> {
 		// Use the analyzer to get the diff buffer
