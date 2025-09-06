@@ -28,8 +28,8 @@ impl LockFile {
 	///
 	/// This is meant to be embedded in the repository manager, which will make a meaningful guard
 	pub(crate) fn write(&mut self) -> Result<FileLock, GitSourceError> {
-		// this ties the lock file borrow into the borrow checker
-		// Additionally, because we do not expose unlock, it will in fact be true that we are writing until the lock file is dropped
+		// This ties the lock file borrow into the borrow checker.
+		// It is not behaviorally significant, but can be useful for debugging.
 		self.lifetime_writes += 1;
 
 		// write and create if it doesn't exist
