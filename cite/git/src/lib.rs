@@ -4,7 +4,7 @@ pub mod repository;
 
 use git2::{DiffFormat, DiffOptions};
 pub use line_range::LineRange;
-use repository::{RepositoryBuilder, RepositoryManager};
+use repository::RepositoryManager;
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
@@ -180,7 +180,6 @@ impl GitSource {
 			current_revision: current_revision.to_string(),
 			name,
 			formatted_url,
-			repository_builder: RepositoryBuilder::new(remote.to_string()),
 		})
 	}
 }
@@ -201,9 +200,9 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
-		// Use the embedded repository builder to fetch the repository
-		let repository_manager = self.repository_builder.clone().fetch()
-			.map_err(|e| SourceError::Internal(e.into()))?;
+		// Create repository manager and fetch the referenced revision
+		let repo_path = std::path::PathBuf::from("target/cite-git").join(repository::Repository::generate_repo_dir_name(&self.remote));
+		let mut repository_manager = RepositoryManager::new(repo_path, self.remote.clone());
 		
 		// Fetch the specific referenced revision if it doesn't exist
 		repository_manager.fetch_specific_revisions(&[&self.referenced_revision])
@@ -218,9 +217,9 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn get_current(&self) -> Result<CurrentGitContent, SourceError> {
-		// Use the embedded repository builder to fetch the repository
-		let repository_manager = self.repository_builder.clone().fetch()
-			.map_err(|e| SourceError::Internal(e.into()))?;
+		// Create repository manager and fetch the current revision
+		let repo_path = std::path::PathBuf::from("target/cite-git").join(repository::Repository::generate_repo_dir_name(&self.remote));
+		let mut repository_manager = RepositoryManager::new(repo_path, self.remote.clone());
 		
 		// Fetch the specific current revision if it doesn't exist
 		repository_manager.fetch_specific_revisions(&[&self.current_revision])
@@ -325,7 +324,7 @@ impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 		let _repo_path = repo_manager.path().clone();
 		
 		// Check if the revision exists in the repository
-		if !repo_manager.revision_exists(&other.revision) {
+		if !repo_manager.revision_exists(&other.revision)? {
 			return Err(SourceError::Internal(
 				format!("Revision {} not found in repository {}", other.revision, self.remote).into(),
 			));

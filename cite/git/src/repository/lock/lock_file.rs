@@ -13,6 +13,10 @@ pub(crate) struct LockFile {
 
 /// Lock file is just a separation of concerns to declare the location of the lock file and tie its usage to the borrow checker
 impl LockFile {
+	/// Create a new lock file at the specified path
+	pub fn new(path: PathBuf) -> Self {
+		Self { path, lifetime_writes: 0 }
+	}
 	/// Read the lock file.
 	///
 	/// When used in the lock struct, this implies obtaining a read lock on the repository directory.

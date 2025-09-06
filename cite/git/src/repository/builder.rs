@@ -13,6 +13,11 @@ pub struct RepositoryBuilder {
 /// You can make helper methods various degress of public for testing.
 
 impl RepositoryBuilder {
+	/// Create a new repository builder
+	pub fn new(repository: super::Repository, lock_file: super::lock::LockFile) -> Self {
+		let locked_repository = Lock::new(repository, lock_file);
+		Self { locked_repository, revisions: Vec::new() }
+	}
 	/// Gets a reference to the locked repository
 	pub(crate) fn locked_repository(&self) -> &Lock {
 		&self.locked_repository
@@ -30,8 +35,9 @@ impl RepositoryBuilder {
 
 	/// Fetch the repo and the revisions
 	pub(crate) fn fetch(&mut self) -> Result<(), GitSourceError> {
-		let repository_writer = self.locked_repository().write()?;
-		repository_writer.fetch_and_ensure_trees_for_revisions(&self.revisions);
+		let revisions = self.revisions.clone();
+		let mut repository_writer = self.locked_repository_mut().write()?;
+		repository_writer.fetch_and_ensure_trees_for_revisions(&revisions);
 
 		Ok(())
 	}

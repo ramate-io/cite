@@ -6,60 +6,45 @@ use std::path::PathBuf;
 ///
 /// Unlike a [Git2Repository], [Repository] does not construct on a local repository.
 /// Instead it describes an abstract reference to a repository and its intend file location.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Repository {
 	path: PathBuf,
 	remote: String,
 }
 
 impl Repository {
-	/// Create a new repository wrapper
-	pub fn new(repo_path: PathBuf) -> Result<Self, GitSourceError> {
-		let git_repo = Git2Repository::open(&repo_path).map_err(|e| GitSourceError::Git(e))?;
-		Ok(Self { repo_path, git_repo })
+	/// Create a new repository reference
+	pub fn new(path: PathBuf, remote: String) -> Self {
+		Self { path, remote }
+	}
+
+	/// Open the git repository at this path
+	pub fn open_git_repo(&self) -> Result<Git2Repository, GitSourceError> {
+		Git2Repository::open(&self.path).map_err(|e| GitSourceError::Git(e))
 	}
 
 	/// Create a new repository by cloning from a remote URL
 	pub fn clone_from_remote(remote_url: &str, repo_path: PathBuf) -> Result<Self, GitSourceError> {
 		// Remove existing directory if it exists to ensure clean state
 		if repo_path.exists() {
-			// Try to remove the directory, but don't fail if it's locked
-			let _ = std::fs::remove_dir_all(&repo_path);
-			// If removal failed, try to remove just the .git directory
-			let git_dir = repo_path.join(".git");
-			if git_dir.exists() {
-				let _ = std::fs::remove_dir_all(&git_dir);
-			}
+			std::fs::remove_dir_all(&repo_path).map_err(|e| {
+				GitSourceError::InvalidRemote(format!("Failed to clean existing directory: {}", e))
+			})?;
 		}
 
 		// Clone the repository with full history to ensure we can access any revision
-		// Try multiple times in case of temporary issues
-		let mut clone_success = false;
-		for attempt in 0..3 {
-			let clone_output = std::process::Command::new("git")
-				.args(&["clone", remote_url])
-				.arg(&repo_path)
-				.output()
-				.map_err(|e| {
-					GitSourceError::InvalidRemote(format!("Failed to run git clone: {}", e))
-				})?;
+		let clone_output = std::process::Command::new("git")
+			.args(&["clone", remote_url])
+			.arg(&repo_path)
+			.output()
+			.map_err(|e| {
+				GitSourceError::InvalidRemote(format!("Failed to run git clone: {}", e))
+			})?;
 
-			if clone_output.status.success() {
-				clone_success = true;
-				break;
-			}
-
-			// If this is not the last attempt, clean up and try again
-			if attempt < 2 {
-				let _ = std::fs::remove_dir_all(&repo_path);
-				std::thread::sleep(std::time::Duration::from_millis(100));
-			}
-		}
-
-		if !clone_success {
+		if !clone_output.status.success() {
 			return Err(GitSourceError::InvalidRemote(format!(
-				"Failed to clone repository after 3 attempts: {}",
-				remote_url
+				"Failed to clone repository: {}",
+				String::from_utf8_lossy(&clone_output.stderr)
 			)));
 		}
 
@@ -70,9 +55,8 @@ impl Repository {
 			));
 		}
 
-		// Open the cloned repository
-		let git_repo = Git2Repository::open(&repo_path).map_err(|e| GitSourceError::Git(e))?;
-		Ok(Self { repo_path, git_repo })
+		// Return repository reference
+		Ok(Self { path: repo_path, remote: remote_url.to_string() })
 	}
 
 	/// Create a new repository by cloning and checking out a specific revision
@@ -86,7 +70,7 @@ impl Repository {
 
 		// Then checkout the specific revision
 		let checkout_output = std::process::Command::new("git")
-			.args(&["-C", &repo.repo_path.to_string_lossy(), "checkout", revision])
+			.args(&["-C", &repo.path.to_string_lossy(), "checkout", revision])
 			.output()
 			.map_err(|e| {
 				GitSourceError::InvalidRemote(format!("Failed to run git checkout: {}", e))
@@ -106,15 +90,16 @@ impl Repository {
 	/// Update an existing repository (best-effort operation)
 	pub fn update_from_remote(&mut self, remote_url: &str) -> Result<(), GitSourceError> {
 		// Try to fetch latest changes - if it fails, that's okay too
-		let _ = Self::fetch_latest_changes(&self.git_repo, remote_url);
+		let _ = self.fetch_latest_changes(remote_url);
 		Ok(())
 	}
 
 	/// Fetch latest changes for an existing repository
-	fn fetch_latest_changes(repo: &Git2Repository, remote_url: &str) -> Result<(), GitSourceError> {
-		let mut remote = repo
+	fn fetch_latest_changes(&self, remote_url: &str) -> Result<(), GitSourceError> {
+		let git_repo = self.open_git_repo()?;
+		let mut remote = git_repo
 			.find_remote("origin")
-			.or_else(|_| repo.remote("origin", remote_url))
+			.or_else(|_| git_repo.remote("origin", remote_url))
 			.map_err(|e| GitSourceError::Git(e))?;
 
 		let mut callbacks = RemoteCallbacks::new();
@@ -172,44 +157,42 @@ impl Repository {
 
 	/// Get the repository path
 	pub fn path(&self) -> &PathBuf {
-		&self.repo_path
+		&self.path
 	}
 
-	/// Get the underlying git2 repository (read-only access)
-	pub fn git_repo(&self) -> &Git2Repository {
-		&self.git_repo
+	/// Get the remote URL
+	pub fn remote(&self) -> &str {
+		&self.remote
 	}
 
 	/// Check if a revision exists in the repository
-	pub fn revision_exists(&self, revision: &str) -> bool {
+	pub fn revision_exists(&self, revision: &str) -> Result<bool, GitSourceError> {
+		let git_repo = self.open_git_repo()?;
+
 		// First try the revision as-is
-		if self.git_repo.revparse_single(revision).is_ok() {
-			return true;
+		if git_repo.revparse_single(revision).is_ok() {
+			return Ok(true);
 		}
 
 		// If it's a branch name, try common branch reference patterns
 		if !revision.starts_with("refs/") && !revision.chars().all(|c| c.is_ascii_hexdigit()) {
 			// Try origin/branch pattern
-			if self.git_repo.revparse_single(&format!("origin/{}", revision)).is_ok() {
-				return true;
+			if git_repo.revparse_single(&format!("origin/{}", revision)).is_ok() {
+				return Ok(true);
 			}
 
 			// Try refs/heads/branch pattern
-			if self.git_repo.revparse_single(&format!("refs/heads/{}", revision)).is_ok() {
-				return true;
+			if git_repo.revparse_single(&format!("refs/heads/{}", revision)).is_ok() {
+				return Ok(true);
 			}
 
 			// Try refs/remotes/origin/branch pattern
-			if self
-				.git_repo
-				.revparse_single(&format!("refs/remotes/origin/{}", revision))
-				.is_ok()
-			{
-				return true;
+			if git_repo.revparse_single(&format!("refs/remotes/origin/{}", revision)).is_ok() {
+				return Ok(true);
 			}
 		}
 
-		false
+		Ok(false)
 	}
 
 	/// Convert a revision string to a proper refspec format for fetching
@@ -238,9 +221,13 @@ impl Repository {
 		}
 	}
 
-	/// Fetch specific revisions that are needed (mutable operation)
-	pub fn fetch_specific_revisions(&mut self, revisions: &[&str]) -> Result<(), GitSourceError> {
-		let mut remote = self.git_repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
+	/// Fetch and ensure trees for revisions (mutable operation)
+	pub fn fetch_and_ensure_trees_for_revisions(
+		&mut self,
+		revisions: &[String],
+	) -> Result<(), GitSourceError> {
+		let git_repo = self.open_git_repo()?;
+		let mut remote = git_repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
 
 		let mut callbacks = RemoteCallbacks::new();
 		callbacks.credentials(|_url, _username_from_url, _allowed_types| git2::Cred::default());
@@ -251,35 +238,24 @@ impl Repository {
 		// Collect revisions that need fetching
 		let mut revisions_to_fetch = Vec::new();
 		for revision in revisions {
-			if !self.revision_exists(revision) {
+			if !self.revision_exists(revision)? {
 				revisions_to_fetch.push(self.convert_to_refspec(revision));
 			}
 		}
 
 		// Only fetch if we have revisions that don't exist locally
 		if !revisions_to_fetch.is_empty() {
-			// First try to fetch just the specific revisions we need
-			let fetch_result = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
-
-			// If specific fetch fails, try fetching common branches that might contain our revisions
-			if fetch_result.is_err() {
-				// Try fetching main/master branches which are likely to contain most commits
-				let common_branches = [
-					"refs/heads/main:refs/remotes/origin/main",
-					"refs/heads/master:refs/remotes/origin/master",
-				];
-				let _ = remote.fetch(&common_branches, Some(&mut fetch_options), None);
-
-				// Try fetching the specific revisions again
-				let _ = remote.fetch(&revisions_to_fetch, Some(&mut fetch_options), None);
-			}
+			// Fetch the specific revisions we need
+			remote
+				.fetch(&revisions_to_fetch, Some(&mut fetch_options), None)
+				.map_err(|e| GitSourceError::Git(e))?;
 		}
 
 		// Validate that we can resolve each revision (this will lazily fetch content as needed)
 		for revision in revisions {
-			if self.revision_exists(revision) {
+			if self.revision_exists(revision)? {
 				// Try to resolve the revision - this will fetch content lazily if needed
-				if let Ok(obj) = self.git_repo.revparse_single(revision) {
+				if let Ok(obj) = git_repo.revparse_single(revision) {
 					match obj.kind() {
 						Some(git2::ObjectType::Commit) => {
 							// For commits, just verify we can access the tree (lazy fetch)
@@ -304,7 +280,7 @@ impl Repository {
 						}
 						_ => {
 							// Other object types, just verify resolution
-							let _ = self.git_repo.revparse_single(revision);
+							let _ = git_repo.revparse_single(revision);
 						}
 					}
 				}
@@ -312,5 +288,80 @@ impl Repository {
 		}
 
 		Ok(())
+	}
+
+	/// Get content diff buffer between two revisions
+	pub fn get_content_diff_buffer(
+		&self,
+		referenced: &str,
+		current: &str,
+	) -> Result<Vec<String>, GitSourceError> {
+		let git_repo = self.open_git_repo()?;
+
+		// Get the referenced revision tree
+		let referenced_obj =
+			git_repo.revparse_single(referenced).map_err(|e| GitSourceError::Git(e))?;
+		let referenced_tree = match referenced_obj.kind() {
+			Some(git2::ObjectType::Commit) => {
+				let commit = referenced_obj.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e))?
+			}
+			Some(git2::ObjectType::Tag) => {
+				let tag = referenced_obj.peel_to_tag().map_err(|e| GitSourceError::Git(e))?;
+				let target = tag.target().map_err(|e| GitSourceError::Git(e))?;
+				let commit = target.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e))?
+			}
+			Some(git2::ObjectType::Tree) => {
+				referenced_obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?
+			}
+			_ => {
+				return Err(GitSourceError::InvalidRevision(format!(
+					"Invalid referenced revision type: {}",
+					referenced
+				)))
+			}
+		};
+
+		// Get the current revision tree
+		let current_obj = git_repo.revparse_single(current).map_err(|e| GitSourceError::Git(e))?;
+		let current_tree = match current_obj.kind() {
+			Some(git2::ObjectType::Commit) => {
+				let commit = current_obj.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e))?
+			}
+			Some(git2::ObjectType::Tag) => {
+				let tag = current_obj.peel_to_tag().map_err(|e| GitSourceError::Git(e))?;
+				let target = tag.target().map_err(|e| GitSourceError::Git(e))?;
+				let commit = target.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e))?
+			}
+			Some(git2::ObjectType::Tree) => {
+				current_obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?
+			}
+			_ => {
+				return Err(GitSourceError::InvalidRevision(format!(
+					"Invalid current revision type: {}",
+					current
+				)))
+			}
+		};
+
+		// Create diff between the trees
+		let diff = git_repo
+			.diff_tree_to_tree(Some(&referenced_tree), Some(&current_tree), None)
+			.map_err(|e| GitSourceError::Git(e))?;
+
+		// Convert diff to string buffer
+		let mut diff_buffer = Vec::new();
+		diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+			if let Ok(text) = std::str::from_utf8(line.content()) {
+				diff_buffer.push(text.to_string());
+			}
+			true
+		})
+		.map_err(|e| GitSourceError::Git(e))?;
+
+		Ok(diff_buffer)
 	}
 }
