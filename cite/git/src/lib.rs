@@ -123,8 +123,9 @@ pub struct GitSource {
 	pub name: String,
 	/// The formatted URL for documentation links
 	pub formatted_url: String,
-	/// Repository builder for handling remote repository operations
-	repository_builder: RepositoryBuilder,
+	// repository builder should no longer be part of the git source
+	// it should only be used internally
+	// GitSource -> RepositoryBuilder -> RepositoryAnalyzer -> GitContent -> Diff
 }
 
 impl GitSource {
