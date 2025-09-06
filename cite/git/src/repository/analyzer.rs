@@ -1,12 +1,10 @@
 use super::builder::RepositoryBuilder;
-use super::lock::Lock;
 use crate::GitSourceError;
-use std::path::PathBuf;
 
 /// Wraps up read operations, can only be constructed from the [RepositoryBuilder].
 #[derive(Debug, Clone)]
 pub struct RepositoryAnalyzer {
-	/// Semantically, this is a builder that has been built.
+	/// Semantically, this is a builder that has been built; it consume the builder.
 	builder: RepositoryBuilder,
 }
 
@@ -23,16 +21,17 @@ impl RepositoryAnalyzer {
 	) -> Result<Vec<String>, GitSourceError> {
 		let repository_reader = self.builder.locked_repository().read()?;
 
-        // just call directly on the repository reader
-        repository_reader.get_content_diff_buffer(referenced, current)
+		// just call directly on the repository reader
+		repository_reader.get_content_diff_buffer(referenced, current);
 
 		todo!()
 	}
 }
 
 impl RepositoryBuilder {
-	pub fn build(self) -> Result<RepositoryAnalyzer, GitSourceError> {
+	pub fn build(mut self) -> Result<RepositoryAnalyzer, GitSourceError> {
 		// do all of the fetching that's involved
+		self.fetch()?;
 
 		Ok(RepositoryAnalyzer { builder: self })
 	}

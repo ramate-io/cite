@@ -8,7 +8,7 @@ use crate::GitSourceError;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct LockFile {
 	path: PathBuf,
-	is_writing: bool,
+	lifetime_writes: u32,
 }
 
 /// Lock file is just a separation of concerns to declare the location of the lock file and tie its usage to the borrow checker
@@ -30,7 +30,7 @@ impl LockFile {
 	pub(crate) fn write(&mut self) -> Result<FileLock, GitSourceError> {
 		// this ties the lock file borrow into the borrow checker
 		// Additionally, because we do not expose unlock, it will in fact be true that we are writing until the lock file is dropped
-		self.is_writing = true;
+		self.lifetime_writes += 1;
 
 		// write and create if it doesn't exist
 		let options = FileOptions::new().write(true).create(true);

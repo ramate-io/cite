@@ -1,12 +1,12 @@
+pub mod analyzer;
 pub mod builder;
 pub mod lock;
-pub mod manager;
 pub mod repository;
 
 pub use repository::Repository;
 
+pub use analyzer::RepositoryManager;
 pub use builder::RepositoryBuilder;
-pub use manager::RepositoryManager;
 
 use crate::GitSourceError;
 use std::path::PathBuf;

@@ -31,4 +31,12 @@ impl RepositoryBuilder {
 	pub fn add_revision(&mut self, revision: String) {
 		self.revisions.push(revision);
 	}
+
+	/// Fetch the repo and the revisions
+	pub(crate) fn fetch(&mut self) -> Result<(), GitSourceError> {
+		let repository_writer = self.locked_repository().write()?;
+		repository_writer.fetch_and_ensure_trees_for_revisions(&self.revisions);
+
+		Ok(())
+	}
 }
