@@ -21,10 +21,8 @@ impl RepositoryAnalyzer {
 	) -> Result<Vec<String>, GitSourceError> {
 		let repository_reader = self.builder.locked_repository().read()?;
 
-		// just call directly on the repository reader
-		repository_reader.get_content_diff_buffer(referenced, current);
-
-		todo!()
+		// Call the repository method directly
+		repository_reader.get_content_diff_buffer(referenced, current)
 	}
 }
 

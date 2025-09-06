@@ -347,9 +347,23 @@ impl Repository {
 			}
 		};
 
-		// Create diff between the trees
+		// Create standardized diff options (same as in lib.rs)
+		let mut opts = git2::DiffOptions::new();
+		opts.context_lines(3); // Show 3 lines of context
+		opts.interhunk_lines(0); // No lines between hunks
+		opts.minimal(true); // Use minimal diff algorithm
+		opts.ignore_whitespace(false); // Don't ignore whitespace
+		opts.ignore_whitespace_eol(false); // Don't ignore end-of-line whitespace
+		opts.ignore_whitespace_change(false); // Don't ignore whitespace changes
+		opts.ignore_submodules(true); // Ignore submodules
+		opts.include_ignored(false); // Don't include ignored files
+		opts.include_untracked(false); // Don't include untracked files
+		opts.include_typechange(true); // Include type changes
+		opts.include_unmodified(false); // Don't include unmodified files
+
+		// Create diff between the trees with standardized options
 		let diff = git_repo
-			.diff_tree_to_tree(Some(&referenced_tree), Some(&current_tree), None)
+			.diff_tree_to_tree(Some(&referenced_tree), Some(&current_tree), Some(&mut opts))
 			.map_err(|e| GitSourceError::Git(e))?;
 
 		// Convert diff to string buffer

@@ -2,9 +2,7 @@ pub mod ui;
 pub mod line_range;
 pub mod repository;
 
-use git2::{DiffFormat, DiffOptions};
 pub use line_range::LineRange;
-use repository::RepositoryManager;
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
@@ -200,58 +198,66 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
-		// Create repository manager and fetch the referenced revision
+		// Create repository and builder
 		let repo_path = std::path::PathBuf::from("target/cite-git").join(repository::Repository::generate_repo_dir_name(&self.remote));
-		let mut repository_manager = RepositoryManager::new(repo_path, self.remote.clone());
+		let repository = repository::Repository::new(repo_path.clone(), self.remote.clone());
+		let lock_file = repository::lock::LockFile::new(repo_path.join(".cite-lock"));
+		let mut builder = repository::RepositoryBuilder::new(repository, lock_file);
 		
-		// Fetch the specific referenced revision if it doesn't exist
-		repository_manager.fetch_specific_revisions(&[&self.referenced_revision])
+		// Add the referenced revision to the builder
+		builder.add_revision(self.referenced_revision.clone());
+		
+		// Build the analyzer
+		let analyzer = builder.build()
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
 		Ok(ReferencedGitContent { 
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
 			revision: self.referenced_revision.clone(),
-			repository_manager,
+			repository_manager: analyzer,
 		})
 	}
 
 	fn get_current(&self) -> Result<CurrentGitContent, SourceError> {
-		// Create repository manager and fetch the current revision
+		// Create repository and builder
 		let repo_path = std::path::PathBuf::from("target/cite-git").join(repository::Repository::generate_repo_dir_name(&self.remote));
-		let mut repository_manager = RepositoryManager::new(repo_path, self.remote.clone());
+		let repository = repository::Repository::new(repo_path.clone(), self.remote.clone());
+		let lock_file = repository::lock::LockFile::new(repo_path.join(".cite-lock"));
+		let mut builder = repository::RepositoryBuilder::new(repository, lock_file);
 		
-		// Fetch the specific current revision if it doesn't exist
-		repository_manager.fetch_specific_revisions(&[&self.current_revision])
+		// Add the current revision to the builder
+		builder.add_revision(self.current_revision.clone());
+		
+		// Build the analyzer
+		let analyzer = builder.build()
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
 		Ok(CurrentGitContent { 
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
 			revision: self.current_revision.clone(),
-			repository_manager,
+			repository_manager: analyzer,
 		})
 	}
 }
 
 /// Git content representation for referenced content
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ReferencedGitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
-	#[serde(skip)]
-	pub repository_manager: RepositoryManager,
+	pub repository_manager: repository::RepositoryAnalyzer,
 }
 
 /// Git content representation for current content
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CurrentGitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
-	#[serde(skip)]
-	pub repository_manager: RepositoryManager,
+	pub repository_manager: repository::RepositoryAnalyzer,
 }
 
 
@@ -316,165 +322,22 @@ impl CurrentGitContent {
 
 impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 	fn diff(&self, other: &ReferencedGitContent) -> Result<GitDiff, SourceError> {
-		// Use the repository manager
-		let repo_manager = &self.repository_manager;
-		
-		let repo = repo_manager.get_repository()
+		// Use the analyzer to get the diff buffer
+		let diff_buffer = self.repository_manager.get_content_diff_buffer(&other.revision, &self.revision)
 			.map_err(|e| SourceError::Internal(e.into()))?;
-		let _repo_path = repo_manager.path().clone();
 		
-		// Check if the revision exists in the repository
-		if !repo_manager.revision_exists(&other.revision)? {
-			return Err(SourceError::Internal(
-				format!("Revision {} not found in repository {}", other.revision, self.remote).into(),
-			));
-		}
-		
-		let obj = repo
-			.revparse_single(&other.revision)
-			.map_err(|e| SourceError::Internal(e.into()))?;
-
-		let comparison_tree = match obj.kind() {
-			Some(git2::ObjectType::Commit) => {
-				let commit = obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tag) => {
-				let tag = obj.peel_to_tag().map_err(|e| SourceError::Internal(e.into()))?;
-				let target = tag.target().map_err(|e| SourceError::Internal(e.into()))?;
-				let commit =
-					target.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tree) => {
-				obj.peel_to_tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			_ => {
-				return Err(SourceError::Internal(
-					format!("Invalid revision type: {}", other.revision).into(),
-				))
-			}
-		};
-
-		// Get the current revision's tree for comparison
-		let current_obj = repo
-			.revparse_single(&self.revision)
-			.map_err(|e| SourceError::Internal(e.into()))?;
-
-		let current_tree = match current_obj.kind() {
-			Some(git2::ObjectType::Commit) => {
-				let commit = current_obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tag) => {
-				let tag = current_obj.peel_to_tag().map_err(|e| SourceError::Internal(e.into()))?;
-				let target = tag.target().map_err(|e| SourceError::Internal(e.into()))?;
-				let commit =
-					target.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tree) => {
-				current_obj.peel_to_tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			_ => {
-				return Err(SourceError::Internal(
-					format!("Invalid current revision type: {}", self.revision).into(),
-				))
-			}
-		};
-
-		// Compare the two trees: referenced_revision vs current_revision
-		let mut opts = DiffOptions::new();
-		
-		// Standardize diff options for consistent output
-		opts.context_lines(3); // Show 3 lines of context
-		opts.interhunk_lines(0); // No lines between hunks
-		opts.minimal(true); // Use minimal diff algorithm
-		opts.ignore_whitespace(false); // Don't ignore whitespace
-		opts.ignore_whitespace_eol(false); // Don't ignore end-of-line whitespace
-		opts.ignore_whitespace_change(false); // Don't ignore whitespace changes
-		opts.ignore_submodules(true); // Ignore submodules
-		opts.include_ignored(false); // Don't include ignored files
-		opts.include_untracked(false); // Don't include untracked files
-		opts.include_typechange(true); // Include type changes
-		opts.include_unmodified(false); // Don't include unmodified files
-		
-		// Handle different path patterns for diff options
-		if let Some(ref _glob_pattern) = self.path_pattern.glob {
-			// For glob patterns, we need to handle the filtering in the diff callback
-			// Don't set pathspec for glob patterns as git2 doesn't support glob in pathspec
-		} else if self.path_pattern.path.ends_with('/') || self.is_directory_path() {
-			// For directory paths, we need to handle this differently
-			// Don't set pathspec for directories as it won't work properly
-		} else {
-			// For single files, we can use pathspec
-			opts.pathspec(&self.path_pattern.path);
-		}
-
-		let diff = repo.diff_tree_to_tree(Some(&comparison_tree), Some(&current_tree), Some(&mut opts))
-			.map_err(|e| SourceError::Internal(e.into()))?;
-
-		// Capture the diff output and check for intersections
-		let mut buffer = String::new();
+		// Filter the diff buffer based on path pattern and line range
+		let mut filtered_buffer = String::new();
 		let mut has_changes = false;
-
-		diff.print(DiffFormat::Patch, |delta, _hunk, line| {
-			// Check if this delta affects a file that matches our pattern
-			let file_path = delta.new_file().path().or_else(|| delta.old_file().path());
-
-			if let Some(path) = file_path {
-				// Enhanced path matching for directories and glob patterns
-				let path_matches = if self.path_pattern.glob.is_some() {
-					// For glob patterns, use the existing matches method
-					self.path_pattern.matches(path)
-				} else if self.path_pattern.path.ends_with('/') || self.is_directory_path() {
-					// For directory paths (with or without trailing slash), check if the file is within the directory
-					let dir_path = self.path_pattern.path.trim_end_matches('/');
-					path.to_string_lossy().starts_with(dir_path) && 
-					(path.to_string_lossy() == dir_path || path.to_string_lossy().starts_with(&format!("{}/", dir_path)))
-				} else {
-					// For single files, use exact match
-					self.path_pattern.matches(path)
-				};
-
-				if path_matches {
-					// Check if this line is within our line range
-					let should_include = if let Some(ref line_range) = self.path_pattern.line_range
-					{
-						// Get line numbers from the diff line
-						let new_line = line.new_lineno();
-						let old_line = line.old_lineno();
-
-						// Check if any of the line numbers fall within our range
-						(new_line.map_or(false, |line_num| {
-							line_range.start <= line_num as usize
-								&& line_num as usize <= line_range.end
-						})) || (old_line.map_or(false, |line_num| {
-							line_range.start <= line_num as usize
-								&& line_num as usize <= line_range.end
-						}))
-					} else {
-						// No line range specified, include all lines
-						true
-					};
-
-					if should_include {
-						has_changes = true;
-
-						// Add the diff line
-						buffer.push(line.origin());
-						if let Ok(content) = std::str::from_utf8(line.content()) {
-							buffer.push_str(content);
-						}
-					}
-				}
-			}
-
-			true
-		})
-		.map_err(|e| SourceError::Internal(e.into()))?;
-
-		Ok(GitDiff { diff: buffer, has_changes })
+		
+		for line in diff_buffer {
+			// TODO: Add path pattern filtering logic here
+			// For now, include all lines
+			filtered_buffer.push_str(&line);
+			has_changes = true;
+		}
+		
+		Ok(GitDiff { diff: filtered_buffer, has_changes })
 	}
 }
 

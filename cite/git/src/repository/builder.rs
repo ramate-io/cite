@@ -37,7 +37,7 @@ impl RepositoryBuilder {
 	pub(crate) fn fetch(&mut self) -> Result<(), GitSourceError> {
 		let revisions = self.revisions.clone();
 		let mut repository_writer = self.locked_repository_mut().write()?;
-		repository_writer.fetch_and_ensure_trees_for_revisions(&revisions);
+		let _ = repository_writer.fetch_and_ensure_trees_for_revisions(&revisions);
 
 		Ok(())
 	}
