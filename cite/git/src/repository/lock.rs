@@ -9,9 +9,10 @@ pub(crate) use write_guard::WriteGuard;
 use super::Repository;
 use crate::GitSourceError;
 
+#[derive(Debug, Clone)]
 pub(crate) struct Lock {
-	repository: Repository,
-	lock_file: LockFile,
+	pub repository: Repository,
+	pub lock_file: LockFile,
 }
 
 impl Lock {
