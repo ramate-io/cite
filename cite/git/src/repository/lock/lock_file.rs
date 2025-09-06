@@ -13,9 +13,9 @@ pub(crate) struct LockFile {
 
 /// Lock file is just a separation of concerns to declare the location of the lock file and tie its usage to the borrow checker
 impl LockFile {
-	/// Read the lock file
+	/// Read the lock file.
 	///
-	/// This is meant to be embedded in the repository manager, which will make a meaningful guard
+	/// When used in the lock struct, this implies obtaining a read lock on the repository directory.
 	pub(crate) fn read(&self) -> Result<FileLock, GitSourceError> {
 		// read and create if it doesn't exist
 		let options = FileOptions::new().read(true).create(true);
@@ -26,7 +26,7 @@ impl LockFile {
 
 	/// Write the lock file
 	///
-	/// This is meant to be embedded in the repository manager, which will make a meaningful guard
+	/// When used in the lock struct, this implies obtaining a write lock on the repository directory.
 	pub(crate) fn write(&mut self) -> Result<FileLock, GitSourceError> {
 		// This ties the lock file borrow into the borrow checker.
 		// It is not behaviorally significant, but can be useful for debugging.
