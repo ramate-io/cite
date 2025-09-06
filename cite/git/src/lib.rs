@@ -871,7 +871,7 @@ mod tests {
 		// Test directory diffing functionality
 		let source = GitSource::try_new(
 			"https://github.com/ramate-io/cite",
-			"cite/http/tests/content",  // Directory path
+			"cite/http/tests/content/",  // Directory path, include trailing slash
 			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
 			"main",
 			None

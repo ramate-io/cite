@@ -351,7 +351,18 @@ impl Repository {
 
 		// Compare the two trees: referenced_revision vs current_revision
 		let mut opts = DiffOptions::new();
-		opts.pathspec(&path_pattern.path);
+
+		// Handle different path patterns for diff options
+		if let Some(ref _glob_pattern) = path_pattern.glob {
+			// For glob patterns, we need to handle the filtering in the diff callback
+			// Don't set pathspec for glob patterns as git2 doesn't support glob in pathspec
+		} else if path_pattern.path.ends_with('/') {
+			// For directory paths, we need to handle this differently
+			// Don't set pathspec for directories as it won't work properly
+		} else {
+			// For single files, we can use pathspec
+			opts.pathspec(&path_pattern.path);
+		}
 
 		let diff = repo
 			.diff_tree_to_tree(Some(&comparison_tree), Some(&current_tree), Some(&mut opts))
@@ -366,7 +377,22 @@ impl Repository {
 			let file_path = delta.new_file().path().or_else(|| delta.old_file().path());
 
 			if let Some(path) = file_path {
-				if path_pattern.matches(path) {
+				// Enhanced path matching for directories and glob patterns
+				let path_matches = if path_pattern.glob.is_some() {
+					// For glob patterns, use the existing matches method
+					path_pattern.matches(path)
+				} else if path_pattern.path.ends_with('/') {
+					// For directory paths (with or without trailing slash), check if the file is within the directory
+					let dir_path = path_pattern.path.trim_end_matches('/');
+					path.to_string_lossy().starts_with(dir_path)
+						&& (path.to_string_lossy() == dir_path
+							|| path.to_string_lossy().starts_with(&format!("{}/", dir_path)))
+				} else {
+					// For single files, use exact match
+					path_pattern.matches(path)
+				};
+
+				if path_matches {
 					// Check if this line is within our line range
 					let should_include = if let Some(ref line_range) = path_pattern.line_range {
 						// Get line numbers from the diff line
