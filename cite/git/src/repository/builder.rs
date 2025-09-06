@@ -25,11 +25,6 @@ impl RepositoryBuilder {
 		Self { locked_repository, revisions: Vec::new() }
 	}
 
-	/// Create a new repository builder
-	pub(crate) fn new(repository: super::Repository, lock_file: super::lock::LockFile) -> Self {
-		let locked_repository = Lock::new(repository, lock_file);
-		Self { locked_repository, revisions: Vec::new() }
-	}
 	/// Gets a reference to the locked repository
 	pub(crate) fn locked_repository(&self) -> &Lock {
 		&self.locked_repository

@@ -18,6 +18,7 @@ impl LockFile {
 		Self { path, lifetime_writes: 0 }
 	}
 
+	#[cfg(test)]
 	/// Get the lock file path
 	pub fn path(&self) -> &PathBuf {
 		&self.path
