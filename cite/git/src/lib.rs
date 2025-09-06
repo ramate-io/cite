@@ -212,7 +212,7 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
 			revision: self.referenced_revision.clone(),
-			repository_manager: analyzer,
+			respository_analyzer: analyzer,
 		})
 	}
 
@@ -231,7 +231,7 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
 			revision: self.current_revision.clone(),
-			repository_manager: analyzer,
+			respository_analyzer: analyzer,
 		})
 	}
 }
@@ -242,7 +242,7 @@ pub struct ReferencedGitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
-	pub repository_manager: repository::RepositoryAnalyzer,
+	pub respository_analyzer: repository::RepositoryAnalyzer,
 }
 
 /// Git content representation for current content
@@ -251,7 +251,7 @@ pub struct CurrentGitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
-	pub repository_manager: repository::RepositoryAnalyzer,
+	pub respository_analyzer: repository::RepositoryAnalyzer,
 }
 
 
@@ -296,7 +296,7 @@ impl GitDiff {
 impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 	fn diff(&self, other: &ReferencedGitContent) -> Result<GitDiff, SourceError> {
 		// Use the analyzer to get the diff buffer
-		let diff_buffer = self.repository_manager.get_content_diff_buffer(&other.revision, &self.revision)
+		let diff_buffer = self.respository_analyzer.get_content_diff_buffer(&other.revision, &self.revision)
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
 		// Filter the diff buffer based on path pattern and line range
