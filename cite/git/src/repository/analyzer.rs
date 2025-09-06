@@ -18,11 +18,12 @@ impl RepositoryAnalyzer {
 		&self,
 		referenced: &str,
 		current: &str,
-	) -> Result<Vec<String>, GitSourceError> {
+		path_pattern: &crate::PathPattern,
+	) -> Result<String, GitSourceError> {
 		let repository_reader = self.builder.locked_repository().read()?;
 
 		// Call the repository method directly
-		repository_reader.get_content_diff_buffer(referenced, current)
+		repository_reader.get_content_diff_buffer(referenced, current, path_pattern)
 	}
 }
 

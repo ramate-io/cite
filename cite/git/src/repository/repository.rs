@@ -1,4 +1,5 @@
 use crate::GitSourceError;
+use git2::{DiffFormat, DiffOptions};
 use git2::{FetchOptions, RemoteCallbacks, Repository as Git2Repository};
 use std::path::PathBuf;
 
@@ -290,92 +291,117 @@ impl Repository {
 		Ok(())
 	}
 
-	/// Get content diff buffer between two revisions
+	/// Get content diff buffer between two revisions, filtered by path pattern
 	pub fn get_content_diff_buffer(
 		&self,
 		referenced: &str,
 		current: &str,
-	) -> Result<Vec<String>, GitSourceError> {
-		let git_repo = self.open_git_repo()?;
+		path_pattern: &crate::PathPattern,
+	) -> Result<String, GitSourceError> {
+		let repo = self.open_git_repo()?;
 
-		// Get the referenced revision tree
-		let referenced_obj =
-			git_repo.revparse_single(referenced).map_err(|e| GitSourceError::Git(e))?;
-		let referenced_tree = match referenced_obj.kind() {
+		let obj = repo.revparse_single(referenced).map_err(|e| GitSourceError::Git(e.into()))?;
+
+		let comparison_tree = match obj.kind() {
 			Some(git2::ObjectType::Commit) => {
-				let commit = referenced_obj.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
-				commit.tree().map_err(|e| GitSourceError::Git(e))?
+				let commit = obj.peel_to_commit().map_err(|e| GitSourceError::Git(e.into()))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e.into()))?
 			}
 			Some(git2::ObjectType::Tag) => {
-				let tag = referenced_obj.peel_to_tag().map_err(|e| GitSourceError::Git(e))?;
-				let target = tag.target().map_err(|e| GitSourceError::Git(e))?;
-				let commit = target.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
-				commit.tree().map_err(|e| GitSourceError::Git(e))?
+				let tag = obj.peel_to_tag().map_err(|e| GitSourceError::Git(e.into()))?;
+				let target = tag.target().map_err(|e| GitSourceError::Git(e.into()))?;
+				let commit = target.peel_to_commit().map_err(|e| GitSourceError::Git(e.into()))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e.into()))?
 			}
 			Some(git2::ObjectType::Tree) => {
-				referenced_obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?
+				obj.peel_to_tree().map_err(|e| GitSourceError::Git(e.into()))?
 			}
 			_ => {
-				return Err(GitSourceError::InvalidRevision(format!(
-					"Invalid referenced revision type: {}",
-					referenced
-				)))
+				return Err(GitSourceError::InvalidRevision(
+					format!("Invalid revision type: {}", referenced).into(),
+				))
 			}
 		};
 
-		// Get the current revision tree
-		let current_obj = git_repo.revparse_single(current).map_err(|e| GitSourceError::Git(e))?;
+		// Get the current revision's tree for comparison
+		let current_obj =
+			repo.revparse_single(current).map_err(|e| GitSourceError::Git(e.into()))?;
+
 		let current_tree = match current_obj.kind() {
 			Some(git2::ObjectType::Commit) => {
-				let commit = current_obj.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
-				commit.tree().map_err(|e| GitSourceError::Git(e))?
+				let commit =
+					current_obj.peel_to_commit().map_err(|e| GitSourceError::Git(e.into()))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e.into()))?
 			}
 			Some(git2::ObjectType::Tag) => {
-				let tag = current_obj.peel_to_tag().map_err(|e| GitSourceError::Git(e))?;
-				let target = tag.target().map_err(|e| GitSourceError::Git(e))?;
-				let commit = target.peel_to_commit().map_err(|e| GitSourceError::Git(e))?;
-				commit.tree().map_err(|e| GitSourceError::Git(e))?
+				let tag = current_obj.peel_to_tag().map_err(|e| GitSourceError::Git(e.into()))?;
+				let target = tag.target().map_err(|e| GitSourceError::Git(e.into()))?;
+				let commit = target.peel_to_commit().map_err(|e| GitSourceError::Git(e.into()))?;
+				commit.tree().map_err(|e| GitSourceError::Git(e.into()))?
 			}
 			Some(git2::ObjectType::Tree) => {
-				current_obj.peel_to_tree().map_err(|e| GitSourceError::Git(e))?
+				current_obj.peel_to_tree().map_err(|e| GitSourceError::Git(e.into()))?
 			}
 			_ => {
-				return Err(GitSourceError::InvalidRevision(format!(
-					"Invalid current revision type: {}",
-					current
-				)))
+				return Err(GitSourceError::InvalidRevision(
+					format!("Invalid current revision type: {}", current).into(),
+				))
 			}
 		};
 
-		// Create standardized diff options (same as in lib.rs)
-		let mut opts = git2::DiffOptions::new();
-		opts.context_lines(3); // Show 3 lines of context
-		opts.interhunk_lines(0); // No lines between hunks
-		opts.minimal(true); // Use minimal diff algorithm
-		opts.ignore_whitespace(false); // Don't ignore whitespace
-		opts.ignore_whitespace_eol(false); // Don't ignore end-of-line whitespace
-		opts.ignore_whitespace_change(false); // Don't ignore whitespace changes
-		opts.ignore_submodules(true); // Ignore submodules
-		opts.include_ignored(false); // Don't include ignored files
-		opts.include_untracked(false); // Don't include untracked files
-		opts.include_typechange(true); // Include type changes
-		opts.include_unmodified(false); // Don't include unmodified files
+		// Compare the two trees: referenced_revision vs current_revision
+		let mut opts = DiffOptions::new();
+		opts.pathspec(&path_pattern.path);
 
-		// Create diff between the trees with standardized options
-		let diff = git_repo
-			.diff_tree_to_tree(Some(&referenced_tree), Some(&current_tree), Some(&mut opts))
-			.map_err(|e| GitSourceError::Git(e))?;
+		let diff = repo
+			.diff_tree_to_tree(Some(&comparison_tree), Some(&current_tree), Some(&mut opts))
+			.map_err(|e| GitSourceError::Git(e.into()))?;
 
-		// Convert diff to string buffer
-		let mut diff_buffer = Vec::new();
-		diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-			if let Ok(text) = std::str::from_utf8(line.content()) {
-				diff_buffer.push(text.to_string());
+		// Capture the diff output and check for intersections
+		let mut buffer = String::new();
+		let mut has_changes = false;
+
+		diff.print(DiffFormat::Patch, |delta, _hunk, line| {
+			// Check if this delta affects a file that matches our pattern
+			let file_path = delta.new_file().path().or_else(|| delta.old_file().path());
+
+			if let Some(path) = file_path {
+				if path_pattern.matches(path) {
+					// Check if this line is within our line range
+					let should_include = if let Some(ref line_range) = path_pattern.line_range {
+						// Get line numbers from the diff line
+						let new_line = line.new_lineno();
+						let old_line = line.old_lineno();
+
+						// Check if any of the line numbers fall within our range
+						(new_line.map_or(false, |line_num| {
+							line_range.start <= line_num as usize
+								&& line_num as usize <= line_range.end
+						})) || (old_line.map_or(false, |line_num| {
+							line_range.start <= line_num as usize
+								&& line_num as usize <= line_range.end
+						}))
+					} else {
+						// No line range specified, include all lines
+						true
+					};
+
+					if should_include {
+						has_changes = true;
+
+						// Add the diff line
+						buffer.push(line.origin());
+						if let Ok(content) = std::str::from_utf8(line.content()) {
+							buffer.push_str(content);
+						}
+					}
+				}
 			}
+
 			true
 		})
 		.map_err(|e| GitSourceError::Git(e))?;
 
-		Ok(diff_buffer)
+		Ok(buffer)
 	}
 }

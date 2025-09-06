@@ -295,22 +295,12 @@ impl GitDiff {
 
 impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 	fn diff(&self, other: &ReferencedGitContent) -> Result<GitDiff, SourceError> {
-		// Use the analyzer to get the diff buffer
-		let diff_buffer = self.respository_analyzer.get_content_diff_buffer(&other.revision, &self.revision)
+		// Use the analyzer to get the filtered diff buffer
+		let diff_buffer = self.respository_analyzer.get_content_diff_buffer(&other.revision, &self.revision, &self.path_pattern)
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
-		// Filter the diff buffer based on path pattern and line range
-		let mut filtered_buffer = String::new();
-		let mut has_changes = false;
-		
-		for line in diff_buffer {
-			// TODO: Add path pattern filtering logic here
-			// For now, include all lines
-			filtered_buffer.push_str(&line);
-			has_changes = true;
-		}
-		
-		Ok(GitDiff { diff: filtered_buffer, has_changes })
+		let has_changes = !diff_buffer.is_empty();
+		Ok(GitDiff { diff: diff_buffer, has_changes })
 	}
 }
 
