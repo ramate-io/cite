@@ -13,6 +13,16 @@ pub struct RepositoryBuilder {
 /// You can make helper methods various degress of public for testing.
 
 impl RepositoryBuilder {
+	/// Create a new repository builder for a target cite directory
+	pub fn in_target_cite(remote: String) -> Self {
+		let repo_path = std::path::PathBuf::from("target/cite-git")
+			.join(super::Repository::generate_repo_dir_name(&remote));
+		let repository = super::Repository::new(repo_path.clone(), remote);
+		let lock_file = super::lock::LockFile::new(repo_path.parent().unwrap().join(".cite-lock"));
+		let locked_repository = Lock::new(repository, lock_file);
+		Self { locked_repository, revisions: Vec::new() }
+	}
+
 	/// Create a new repository builder
 	pub(crate) fn new(repository: super::Repository, lock_file: super::lock::LockFile) -> Self {
 		let locked_repository = Lock::new(repository, lock_file);

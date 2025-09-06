@@ -198,11 +198,8 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
-		// Create repository and builder
-		let repo_path = std::path::PathBuf::from("target/cite-git").join(repository::Repository::generate_repo_dir_name(&self.remote));
-		let repository = repository::Repository::new(repo_path.clone(), self.remote.clone());
-		let lock_file = repository::lock::LockFile::new(repo_path.join(".cite-lock"));
-		let mut builder = repository::RepositoryBuilder::new(repository, lock_file);
+		// Create builder using the centralized method
+		let mut builder = repository::RepositoryBuilder::in_target_cite(self.remote.clone());
 		
 		// Add the referenced revision to the builder
 		builder.add_revision(self.referenced_revision.clone());
@@ -220,11 +217,8 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn get_current(&self) -> Result<CurrentGitContent, SourceError> {
-		// Create repository and builder
-		let repo_path = std::path::PathBuf::from("target/cite-git").join(repository::Repository::generate_repo_dir_name(&self.remote));
-		let repository = repository::Repository::new(repo_path.clone(), self.remote.clone());
-		let lock_file = repository::lock::LockFile::new(repo_path.join(".cite-lock"));
-		let mut builder = repository::RepositoryBuilder::new(repository, lock_file);
+		// Create builder using the centralized method
+		let mut builder = repository::RepositoryBuilder::in_target_cite(self.remote.clone());
 		
 		// Add the current revision to the builder
 		builder.add_revision(self.current_revision.clone());
