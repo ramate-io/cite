@@ -827,8 +827,7 @@ mod tests {
 		assert_eq!(current_content.revision, "main");
 
 		// Test that diff works
-		let diff_result = current_content.diff(&referenced_content);
-		assert!(diff_result.is_ok(), "Diff should work for oac repository");
+		current_content.diff(&referenced_content)?;
 
 		Ok(())
 	}
