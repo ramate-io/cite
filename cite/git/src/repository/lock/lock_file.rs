@@ -68,7 +68,6 @@ impl LockFile {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::path::PathBuf;
 
 	#[test]
 	fn test_lock_file_creation() -> Result<(), Box<dyn std::error::Error>> {
@@ -142,14 +141,24 @@ mod tests {
 	#[test]
 	fn test_target_cite_paths() -> Result<(), Box<dyn std::error::Error>> {
 		let remote = "https://github.com/ramate-io/cite".to_string();
-		let repo_path = PathBuf::from("target/cite-git")
-			.join(super::super::Repository::generate_repo_dir_name(&remote));
-		let lock_path = PathBuf::from("target/cite-git").join(".cite-lock");
+
+		// Use the same logic as RepositoryBuilder::in_target_cite
+		let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+			.unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().to_string());
+		let target_dir = std::path::PathBuf::from(&manifest_dir).join("target/cite-git");
+
+		let repo_dir_name = super::super::Repository::generate_repo_dir_name(&remote);
+		let repo_path = target_dir.join(&repo_dir_name);
+
+		// Create lock file named after the repo with sanitized name
+		let sanitized_name = repo_dir_name.replace('/', "_").replace(':', "_");
+		let lock_path = target_dir.join(format!(".cite-lock-{}", sanitized_name));
 
 		println!("Repo path: {:?}", repo_path);
 		println!("Lock path: {:?}", lock_path);
 		println!("Lock parent: {:?}", lock_path.parent());
 		println!("Lock parent exists: {:?}", lock_path.parent().map(|p| p.exists()));
+		println!("Sanitized name: {}", sanitized_name);
 
 		// Test that we can create the lock file at this path
 		let mut lock_file = LockFile::new(lock_path.clone());
@@ -174,6 +183,16 @@ mod tests {
 				println!("❌ Failed to create target cite read lock: {:?}", e);
 				return Err(format!("Target cite read lock creation failed: {}", e).into());
 			}
+		}
+
+		// Verify the lock file has the correct repo-specific name
+		let lock_filename = lock_path.file_name().unwrap().to_string_lossy();
+		if lock_filename.starts_with(".cite-lock-") {
+			println!("✅ Lock file has repo-specific name: {}", lock_filename);
+		} else {
+			return Err(
+				format!("Lock file does not have repo-specific name: {}", lock_filename).into()
+			);
 		}
 
 		Ok(())

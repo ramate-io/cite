@@ -24,75 +24,35 @@ impl Repository {
 		Git2Repository::open(&self.path).map_err(|e| GitSourceError::Git(e))
 	}
 
-	/// Create a new repository by cloning from a remote URL
-	pub fn clone_from_remote(remote_url: &str, repo_path: PathBuf) -> Result<Self, GitSourceError> {
-		// Remove existing directory if it exists to ensure clean state
-		if repo_path.exists() {
-			std::fs::remove_dir_all(&repo_path).map_err(|e| {
-				GitSourceError::InvalidRemote(format!("Failed to clean existing directory: {}", e))
-			})?;
-		}
-
-		// Clone the repository with full history to ensure we can access any revision
-		let clone_output = std::process::Command::new("git")
-			.args(&["clone", remote_url])
-			.arg(&repo_path)
-			.output()
-			.map_err(|e| {
-				GitSourceError::InvalidRemote(format!("Failed to run git clone: {}", e))
-			})?;
-
-		if !clone_output.status.success() {
-			return Err(GitSourceError::InvalidRemote(format!(
-				"Failed to clone repository: {}",
-				String::from_utf8_lossy(&clone_output.stderr)
-			)));
-		}
-
-		// Verify the repository is accessible
-		if !repo_path.exists() {
-			return Err(GitSourceError::InvalidRemote(
-				"Repository was not created successfully".to_string(),
-			));
-		}
-
-		// Return repository reference
-		Ok(Self { path: repo_path, remote: remote_url.to_string() })
-	}
-
-	/// Create a new repository by cloning and checking out a specific revision
-	pub fn clone_revision(
-		remote_url: &str,
-		revision: &str,
-		repo_path: PathBuf,
-	) -> Result<Self, GitSourceError> {
-		// First clone the repository
-		let repo = Self::clone_from_remote(remote_url, repo_path)?;
-
-		// Then checkout the specific revision
-		let checkout_output = std::process::Command::new("git")
-			.args(&["-C", &repo.path.to_string_lossy(), "checkout", revision])
-			.output()
-			.map_err(|e| {
-				GitSourceError::InvalidRemote(format!("Failed to run git checkout: {}", e))
-			})?;
-
-		if !checkout_output.status.success() {
-			return Err(GitSourceError::InvalidRemote(format!(
-				"Failed to checkout revision {}: {}",
-				revision,
-				String::from_utf8_lossy(&checkout_output.stderr)
-			)));
-		}
-
-		Ok(repo)
-	}
-
 	/// Update an existing repository (best-effort operation)
 	pub fn update_from_remote(&mut self, remote_url: &str) -> Result<(), GitSourceError> {
 		// Try to fetch latest changes - if it fails, that's okay too
 		let _ = self.fetch_latest_changes(remote_url);
 		Ok(())
+	}
+
+	/// Clone the repository from the remote URL
+	fn clone_repository(&self) -> Result<(), GitSourceError> {
+		// Ensure parent directory exists
+		if let Some(parent) = self.path.parent() {
+			std::fs::create_dir_all(parent).map_err(|e| {
+				GitSourceError::InvalidRemote(format!("Failed to create parent directory: {}", e))
+			})?;
+		}
+
+		match Git2Repository::clone(&self.remote, &self.path) {
+			Ok(_repo) => Ok(()),
+			Err(e) => {
+				// Check if this is the "exists and is not an empty directory" error
+				if e.code() == git2::ErrorCode::Exists
+					&& e.message().contains("exists and is not an empty directory")
+				{
+					Ok(())
+				} else {
+					Err(GitSourceError::Git(e))
+				}
+			}
+		}
 	}
 
 	/// Fetch latest changes for an existing repository
@@ -222,11 +182,16 @@ impl Repository {
 		}
 	}
 
-	/// Fetch and ensure trees for revisions (mutable operation)
-	pub fn fetch_and_ensure_trees_for_revisions(
+	/// Clone repository and ensure trees for revisions (mutable operation)
+	pub fn clone_and_ensure_revisions(
 		&mut self,
 		revisions: &[String],
 	) -> Result<(), GitSourceError> {
+		// If repository doesn't exist, clone it first
+		if !self.path.exists() {
+			self.clone_repository()?;
+		}
+
 		let git_repo = self.open_git_repo()?;
 		let mut remote = git_repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
 

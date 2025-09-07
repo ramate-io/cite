@@ -15,11 +15,18 @@ pub struct RepositoryBuilder {
 impl RepositoryBuilder {
 	/// Create a new repository builder for a target cite directory
 	pub fn in_target_cite(remote: String) -> Self {
-		let repo_path = std::path::PathBuf::from("target/cite-git")
-			.join(super::Repository::generate_repo_dir_name(&remote));
+		// Get the manifest directory (project root) and build target path
+		let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+			.unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().to_string());
+		let target_dir = std::path::PathBuf::from(&manifest_dir).join("target/cite-git");
+
+		let repo_dir_name = super::Repository::generate_repo_dir_name(&remote);
+		let repo_path = target_dir.join(&repo_dir_name);
 		let repository = super::Repository::new(repo_path.clone(), remote);
-		// Create lock file in the target/cite-git directory (parent of repo)
-		let lock_path = std::path::PathBuf::from("target/cite-git").join(".cite-lock");
+
+		// Create lock file named after the repo with sanitized name
+		let sanitized_name = repo_dir_name.replace('/', "_").replace(':', "_");
+		let lock_path = target_dir.join(format!(".cite-lock-{}", sanitized_name));
 		let lock_file = super::lock::LockFile::new(lock_path);
 		let locked_repository = Lock::new(repository, lock_file);
 		Self { locked_repository, revisions: Vec::new() }
@@ -40,11 +47,11 @@ impl RepositoryBuilder {
 		self.revisions.push(revision);
 	}
 
-	/// Fetch the repo and the revisions
+	/// Clone the repo and ensure revisions are available
 	pub(crate) fn fetch(&mut self) -> Result<(), GitSourceError> {
 		let revisions = self.revisions.clone();
 		let mut repository_writer = self.locked_repository_mut().write()?;
-		let _ = repository_writer.fetch_and_ensure_trees_for_revisions(&revisions);
+		repository_writer.clone_and_ensure_revisions(&revisions)?;
 
 		Ok(())
 	}
@@ -99,6 +106,31 @@ mod tests {
 			return Err(format!(
 				"Lock file path {:?} is not in the expected parent directory {:?}",
 				lock_path, expected_parent
+			)
+			.into());
+		}
+
+		// Verify the lock file has a repo-specific name
+		let lock_filename = lock_path.file_name().unwrap().to_string_lossy();
+		if lock_filename.starts_with(".cite-lock-") {
+			println!("✅ Lock file has repo-specific name: {}", lock_filename);
+		} else {
+			return Err(
+				format!("Lock file does not have repo-specific name: {}", lock_filename).into()
+			);
+		}
+
+		// Verify paths use CARGO_MANIFEST_DIR with proper project root detection
+		let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+			.unwrap_or_else(|_| std::env::current_dir().unwrap().to_string_lossy().to_string());
+		let expected_target = std::path::PathBuf::from(&manifest_dir).join("target/cite-git");
+
+		if repo_path.starts_with(&expected_target) {
+			println!("✅ Repository path uses CARGO_MANIFEST_DIR correctly");
+		} else {
+			return Err(format!(
+				"Repository path does not use CARGO_MANIFEST_DIR. Expected base: {:?}, Actual: {:?}",
+				expected_target, repo_path
 			)
 			.into());
 		}
