@@ -15,6 +15,11 @@ pub(crate) struct Lock {
 	pub lock_file: LockFile,
 }
 
+/// NOTE: I just took a look at how Cargo is handling git concurrency, and they are not...
+///
+/// https://github.com/rust-lang/cargo/blob/3ceb2cb2504fed7446be428c3b8715b696161487/src/cargo/sources/git/source.rs#L445
+/// The clones are single threaded when constructing from the package manager.
+/// Subsequent revision specific activities are performed on locked copies of the repository.
 impl Lock {
 	pub fn new(repository: Repository, lock_file: LockFile) -> Self {
 		Self { repository, lock_file }
