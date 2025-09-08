@@ -23,13 +23,6 @@ impl Repository {
 		Git2Repository::open(&self.path).map_err(|e| GitSourceError::Git(e))
 	}
 
-	/// Update an existing repository (best-effort operation)
-	pub fn update_from_remote(&mut self, remote_url: &str) -> Result<(), GitSourceError> {
-		// Try to fetch latest changes - if it fails, that's okay too
-		let _ = self.fetch_latest_changes(remote_url);
-		Ok(())
-	}
-
 	/// Clone the repository from the remote URL
 	fn clone_repository(&self) -> Result<(), GitSourceError> {
 		// Ensure parent directory exists
@@ -76,6 +69,56 @@ impl Repository {
 				None,
 			)
 			.map_err(|e| GitSourceError::Git(e))?;
+
+		// Update local branches to point to the latest remote branches
+		self.update_local_branches(&git_repo)?;
+
+		Ok(())
+	}
+
+	/// Update local branches to point to the latest remote tracking branches
+	fn update_local_branches(&self, git_repo: &Git2Repository) -> Result<(), GitSourceError> {
+		// Get all remote tracking branches
+		let remote_refs = git_repo.references_glob("refs/remotes/origin/*")?;
+
+		for remote_ref in remote_refs {
+			let remote_ref = remote_ref?;
+			let remote_ref_name = remote_ref.name().ok_or_else(|| {
+				GitSourceError::InvalidRemote("Invalid remote reference name".to_string())
+			})?;
+
+			// Extract branch name from refs/remotes/origin/branch_name
+			if let Some(branch_name) = remote_ref_name.strip_prefix("refs/remotes/origin/") {
+				// Skip HEAD reference
+				if branch_name == "HEAD" {
+					continue;
+				}
+
+				let local_ref_name = format!("refs/heads/{}", branch_name);
+
+				// Check if local branch exists
+				if let Ok(mut local_ref) = git_repo.find_reference(&local_ref_name) {
+					// Update local branch to point to the same commit as remote branch
+					let target_oid = remote_ref.target().ok_or_else(|| {
+						GitSourceError::InvalidRemote("Invalid remote reference target".to_string())
+					})?;
+
+					local_ref.set_target(target_oid, "Update from remote")?;
+				} else {
+					// Create local branch pointing to remote branch
+					let target_oid = remote_ref.target().ok_or_else(|| {
+						GitSourceError::InvalidRemote("Invalid remote reference target".to_string())
+					})?;
+
+					git_repo.reference(
+						&local_ref_name,
+						target_oid,
+						true,
+						"Create local branch from remote",
+					)?;
+				}
+			}
+		}
 
 		Ok(())
 	}
@@ -191,6 +234,9 @@ impl Repository {
 			self.clone_repository()?;
 		}
 
+		// Repository exists, fetch latest changes to update existing branches/tags
+		self.fetch_latest_changes(&self.remote)?;
+
 		let git_repo = self.open_git_repo()?;
 		let mut remote = git_repo.find_remote("origin").map_err(|e| GitSourceError::Git(e))?;
 
@@ -200,7 +246,7 @@ impl Repository {
 		let mut fetch_options = FetchOptions::new();
 		fetch_options.remote_callbacks(callbacks);
 
-		// Collect revisions that need fetching
+		// Collect revisions that need fetching (after updating existing refs)
 		let mut revisions_to_fetch = Vec::new();
 		for revision in revisions {
 			if !self.revision_exists(revision)? {
