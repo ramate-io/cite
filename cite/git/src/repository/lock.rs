@@ -27,6 +27,8 @@ impl Lock {
 
 	pub fn wait_for_no_git_locks(&self) {
 		let repository_path = self.repository.path();
+		let start_time = std::time::Instant::now();
+		let timeout = std::time::Duration::from_secs(30);
 
 		loop {
 			let mut any_locks_found = false;
@@ -54,14 +56,27 @@ impl Lock {
 				break;
 			}
 
+			// Check if we've exceeded the timeout
+			if start_time.elapsed() >= timeout {
+				// Timeout reached, proceed anyway
+				break;
+			}
+
 			// Wait a bit before checking again
-			std::thread::sleep(std::time::Duration::from_millis(100));
+			std::thread::sleep(std::time::Duration::from_millis(50));
 		}
 	}
 
 	pub fn read(&self) -> Result<ReadGuard, GitSourceError> {
 		let lock = self.lock_file.read()?;
 
+		// this is logically unsafe because if we have the read guard
+		// we would not be able to fix the locks.
+		// However, it seems git cleans up locks after the the process is done actually
+		// using libgit2.
+		// Moving to the other side of the lock acquisition also doesn't make sense,
+		// because another process could form locks after we check.
+		// So, all of this is just a best effort.
 		self.wait_for_no_git_locks();
 
 		Ok(ReadGuard::new(&self.repository, &self.lock_file, lock))
