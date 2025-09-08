@@ -189,6 +189,9 @@ impl Repository {
 		// If repository doesn't exist, clone it first
 		if !self.path.exists() {
 			self.clone_repository()?;
+		} else {
+			// Repository exists, fetch latest changes to update existing branches/tags
+			self.fetch_latest_changes(&self.remote)?;
 		}
 
 		let git_repo = self.open_git_repo()?;
@@ -200,7 +203,7 @@ impl Repository {
 		let mut fetch_options = FetchOptions::new();
 		fetch_options.remote_callbacks(callbacks);
 
-		// Collect revisions that need fetching
+		// Collect revisions that need fetching (after updating existing refs)
 		let mut revisions_to_fetch = Vec::new();
 		for revision in revisions {
 			if !self.revision_exists(revision)? {
