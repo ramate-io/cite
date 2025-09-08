@@ -1,5 +1,5 @@
 use super::builder::RepositoryBuilder;
-use crate::GitSourceError;
+use crate::{util::with_retry, GitSourceError};
 
 /// Wraps up read operations, can only be constructed from the [RepositoryBuilder].
 #[derive(Debug, Clone)]
@@ -20,10 +20,11 @@ impl RepositoryAnalyzer {
 		current: &str,
 		path_pattern: &crate::PathPattern,
 	) -> Result<String, GitSourceError> {
-		let repository_reader = self.builder.locked_repository().read()?;
-
-		// Call the repository method directly
-		repository_reader.get_content_diff_buffer(referenced, current, path_pattern)
+		with_retry(|| {
+			let repository_reader = self.builder.locked_repository().read()?;
+			// Call the repository method directly
+			repository_reader.get_content_diff_buffer(referenced, current, path_pattern)
+		})
 	}
 }
 

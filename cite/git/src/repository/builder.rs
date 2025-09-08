@@ -1,5 +1,5 @@
 use super::lock::Lock;
-use crate::GitSourceError;
+use crate::{util::with_retry, GitSourceError};
 
 /// Builder for fetching and preparing git repositories with all necessary information
 #[derive(Debug, Clone)]
@@ -50,10 +50,12 @@ impl RepositoryBuilder {
 	/// Clone the repo and ensure revisions are available
 	pub(crate) fn fetch(&mut self) -> Result<(), GitSourceError> {
 		let revisions = self.revisions.clone();
-		let mut repository_writer = self.locked_repository_mut().write()?;
-		repository_writer.clone_and_ensure_revisions(&revisions)?;
 
-		Ok(())
+		// Wrap the git operations in retry logic
+		with_retry(|| {
+			let mut repository_writer = self.locked_repository_mut().write()?;
+			repository_writer.clone_and_ensure_revisions(&revisions)
+		})
 	}
 }
 

@@ -1,6 +1,7 @@
 pub mod ui;
 pub mod line_range;
 pub mod repository;
+pub mod util;
 
 pub use line_range::LineRange;
 
