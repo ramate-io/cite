@@ -1,7 +1,7 @@
+use crate::GitSourceError;
 use file_lock::{FileLock, FileOptions};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMa;
-use std::purceError;
+use std::path::PathBuf;
 
 /// Identifies thOn lLcakion and the conte{Aro, Mut x}ck file
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
