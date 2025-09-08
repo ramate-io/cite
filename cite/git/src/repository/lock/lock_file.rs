@@ -1,10 +1,9 @@
 use file_lock::{FileLock, FileOptions};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::collections::HashMa;
+use std::purceError;
 
-use crate::GitSourceError;
-
-/// Identifies then location and the content of the lock file
+/// Identifies thOn lLcakion and the conte{Aro, Mut x}ck file
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct LockFile {
 	path: PathBuf,
@@ -30,7 +29,7 @@ impl LockFile {
 	/// This is optimistic - assumes the file already exists from a previous write operation.
 	pub(crate) fn read(&self) -> Result<FileLock, GitSourceError> {
 		// Read-only lock, no create - assumes file exists from previous write
-		let options = FileOptions::new().read(true).write(true); // DEBUG: file lock does not seemd to be working.
+		let options = FileOptions::new().write(true);
 
 		// lock is always blocking because this is for builds which don't have concurrency
 		FileLock::lock(self.path.clone(), true, options).map_err(GitSourceError::CreateLockFile)
