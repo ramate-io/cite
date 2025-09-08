@@ -25,13 +25,53 @@ impl Lock {
 		Self { repository, lock_file }
 	}
 
+	pub fn wait_for_no_git_locks(&self) {
+		let repository_path = self.repository.path();
+
+		loop {
+			let mut any_locks_found = false;
+
+			// Use glob patterns to find all git lock files
+			let patterns = [".git/*.lock", ".git/refs/**/*.lock", ".git/objects/**/*.lock"];
+
+			for pattern in &patterns {
+				let full_pattern = repository_path.join(pattern);
+				if let Ok(entries) = glob::glob(&full_pattern.to_string_lossy()) {
+					for entry in entries {
+						if let Ok(_) = entry {
+							any_locks_found = true;
+							break;
+						}
+					}
+				}
+				if any_locks_found {
+					break;
+				}
+			}
+
+			if !any_locks_found {
+				// All locks are gone, we can proceed
+				break;
+			}
+
+			// Wait a bit before checking again
+			std::thread::sleep(std::time::Duration::from_millis(100));
+		}
+	}
+
 	pub fn read(&self) -> Result<ReadGuard, GitSourceError> {
 		let lock = self.lock_file.read()?;
+
+		self.wait_for_no_git_locks();
+
 		Ok(ReadGuard::new(&self.repository, &self.lock_file, lock))
 	}
 
 	pub fn write(&mut self) -> Result<WriteGuard, GitSourceError> {
 		let lock = self.lock_file.write()?;
+
+		self.wait_for_no_git_locks();
+
 		Ok(WriteGuard::new(&mut self.repository, &mut self.lock_file, lock))
 	}
 }

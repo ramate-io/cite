@@ -18,7 +18,6 @@ impl Repository {
 	pub fn new(path: PathBuf, remote: String) -> Self {
 		Self { path, remote }
 	}
-
 	/// Open the git repository at this path
 	pub fn open_git_repo(&self) -> Result<Git2Repository, GitSourceError> {
 		Git2Repository::open(&self.path).map_err(|e| GitSourceError::Git(e))
