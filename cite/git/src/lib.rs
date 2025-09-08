@@ -1,10 +1,9 @@
 pub mod ui;
 pub mod line_range;
-pub mod repository_manager;
+pub mod repository;
+pub mod util;
 
-use git2::{DiffFormat, DiffOptions};
 pub use line_range::LineRange;
-use repository_manager::{RepositoryBuilder, RepositoryManager};
 
 use cite_core::{Content, Current, Diff, Id, Referenced, Source, SourceError};
 use serde::{Deserialize, Serialize};
@@ -33,6 +32,9 @@ pub enum GitSourceError {
 
 	#[error("Invalid path: {0}")]
 	InvalidPath(String),
+
+	#[error("Failed to create lock file: {0}")]
+	CreateLockFile(#[source] std::io::Error),
 }
 
 impl From<GitSourceError> for SourceError {
@@ -120,8 +122,9 @@ pub struct GitSource {
 	pub name: String,
 	/// The formatted URL for documentation links
 	pub formatted_url: String,
-	/// Repository builder for handling remote repository operations
-	repository_builder: RepositoryBuilder,
+	// repository builder should no longer be part of the git source
+	// it should only be used internally
+	// GitSource -> RepositoryBuilder -> RepositoryAnalyzer -> GitContent -> Diff
 }
 
 impl GitSource {
@@ -176,7 +179,6 @@ impl GitSource {
 			current_revision: current_revision.to_string(),
 			name,
 			formatted_url,
-			repository_builder: RepositoryBuilder::new(remote.to_string()),
 		})
 	}
 }
@@ -197,58 +199,60 @@ impl Source<ReferencedGitContent, CurrentGitContent, GitDiff> for GitSource {
 	}
 
 	fn get_referenced(&self) -> Result<ReferencedGitContent, SourceError> {
-		// Use the embedded repository builder to fetch the repository
-		let repository_manager = self.repository_builder.clone().fetch()
-			.map_err(|e| SourceError::Internal(e.into()))?;
+		// Create builder using the centralized method
+		let mut builder = repository::RepositoryBuilder::in_target_cite(self.remote.clone());
 		
-		// Fetch the specific referenced revision if it doesn't exist
-		repository_manager.fetch_specific_revisions(&[&self.referenced_revision])
+		// Add the referenced revision to the builder
+		builder.add_revision(self.referenced_revision.clone());
+		
+		// Build the analyzer
+		let analyzer = builder.build()
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
 		Ok(ReferencedGitContent { 
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
 			revision: self.referenced_revision.clone(),
-			repository_manager,
+			respository_analyzer: analyzer,
 		})
 	}
 
 	fn get_current(&self) -> Result<CurrentGitContent, SourceError> {
-		// Use the embedded repository builder to fetch the repository
-		let repository_manager = self.repository_builder.clone().fetch()
-			.map_err(|e| SourceError::Internal(e.into()))?;
+		// Create builder using the centralized method
+		let mut builder = repository::RepositoryBuilder::in_target_cite(self.remote.clone());
 		
-		// Fetch the specific current revision if it doesn't exist
-		repository_manager.fetch_specific_revisions(&[&self.current_revision])
+		// Add the current revision to the builder
+		builder.add_revision(self.current_revision.clone());
+		
+		// Build the analyzer
+		let analyzer = builder.build()
 			.map_err(|e| SourceError::Internal(e.into()))?;
 		
 		Ok(CurrentGitContent { 
 			remote: self.remote.clone(), 
 			path_pattern: self.path_pattern.clone(), 
 			revision: self.current_revision.clone(),
-			repository_manager,
+			respository_analyzer: analyzer,
 		})
 	}
 }
 
 /// Git content representation for referenced content
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ReferencedGitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
-	#[serde(skip)]
-	pub repository_manager: RepositoryManager,
+	pub respository_analyzer: repository::RepositoryAnalyzer,
 }
 
 /// Git content representation for current content
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CurrentGitContent {
 	pub remote: String,
 	pub path_pattern: PathPattern,
 	pub revision: String,
-	#[serde(skip)]
-	pub repository_manager: RepositoryManager,
+	pub respository_analyzer: repository::RepositoryAnalyzer,
 }
 
 
@@ -292,127 +296,12 @@ impl GitDiff {
 
 impl Current<ReferencedGitContent, GitDiff> for CurrentGitContent {
 	fn diff(&self, other: &ReferencedGitContent) -> Result<GitDiff, SourceError> {
-		// Use the repository manager
-		let repo_manager = &self.repository_manager;
+		// Use the analyzer to get the filtered diff buffer
+		let diff_buffer = self.respository_analyzer.get_content_diff_buffer(&other.revision, &self.revision, &self.path_pattern)
+			.map_err(|e| SourceError::Internal(e.into()))?;
 		
-		let repo = repo_manager.get_repository()
-			.map_err(|e| SourceError::Internal(e.into()))?;
-		let _repo_path = repo_manager.path().clone();
-		
-		// Check if the revision exists in the repository
-		if !repo_manager.revision_exists(&other.revision) {
-			return Err(SourceError::Internal(
-				format!("Revision {} not found in repository {}", other.revision, self.remote).into(),
-			));
-		}
-		
-		let obj = repo
-			.revparse_single(&other.revision)
-			.map_err(|e| SourceError::Internal(e.into()))?;
-
-		let comparison_tree = match obj.kind() {
-			Some(git2::ObjectType::Commit) => {
-				let commit = obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tag) => {
-				let tag = obj.peel_to_tag().map_err(|e| SourceError::Internal(e.into()))?;
-				let target = tag.target().map_err(|e| SourceError::Internal(e.into()))?;
-				let commit =
-					target.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tree) => {
-				obj.peel_to_tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			_ => {
-				return Err(SourceError::Internal(
-					format!("Invalid revision type: {}", other.revision).into(),
-				))
-			}
-		};
-
-		// Get the current revision's tree for comparison
-		let current_obj = repo
-			.revparse_single(&self.revision)
-			.map_err(|e| SourceError::Internal(e.into()))?;
-
-		let current_tree = match current_obj.kind() {
-			Some(git2::ObjectType::Commit) => {
-				let commit = current_obj.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tag) => {
-				let tag = current_obj.peel_to_tag().map_err(|e| SourceError::Internal(e.into()))?;
-				let target = tag.target().map_err(|e| SourceError::Internal(e.into()))?;
-				let commit =
-					target.peel_to_commit().map_err(|e| SourceError::Internal(e.into()))?;
-				commit.tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			Some(git2::ObjectType::Tree) => {
-				current_obj.peel_to_tree().map_err(|e| SourceError::Internal(e.into()))?
-			}
-			_ => {
-				return Err(SourceError::Internal(
-					format!("Invalid current revision type: {}", self.revision).into(),
-				))
-			}
-		};
-
-		// Compare the two trees: referenced_revision vs current_revision
-		let mut opts = DiffOptions::new();
-		opts.pathspec(&self.path_pattern.path);
-
-		let diff = repo.diff_tree_to_tree(Some(&comparison_tree), Some(&current_tree), Some(&mut opts))
-			.map_err(|e| SourceError::Internal(e.into()))?;
-
-		// Capture the diff output and check for intersections
-		let mut buffer = String::new();
-		let mut has_changes = false;
-
-		diff.print(DiffFormat::Patch, |delta, _hunk, line| {
-			// Check if this delta affects a file that matches our pattern
-			let file_path = delta.new_file().path().or_else(|| delta.old_file().path());
-
-			if let Some(path) = file_path {
-				if self.path_pattern.matches(path) {
-					// Check if this line is within our line range
-					let should_include = if let Some(ref line_range) = self.path_pattern.line_range
-					{
-						// Get line numbers from the diff line
-						let new_line = line.new_lineno();
-						let old_line = line.old_lineno();
-
-						// Check if any of the line numbers fall within our range
-						(new_line.map_or(false, |line_num| {
-							line_range.start <= line_num as usize
-								&& line_num as usize <= line_range.end
-						})) || (old_line.map_or(false, |line_num| {
-							line_range.start <= line_num as usize
-								&& line_num as usize <= line_range.end
-						}))
-					} else {
-						// No line range specified, include all lines
-						true
-					};
-
-					if should_include {
-						has_changes = true;
-
-						// Add the diff line
-						buffer.push(line.origin());
-						if let Ok(content) = std::str::from_utf8(line.content()) {
-							buffer.push_str(content);
-						}
-					}
-				}
-			}
-
-			true
-		})
-		.map_err(|e| SourceError::Internal(e.into()))?;
-
-		Ok(GitDiff { diff: buffer, has_changes })
+		let has_changes = !diff_buffer.is_empty();
+		Ok(GitDiff { diff: diff_buffer, has_changes })
 	}
 }
 
@@ -853,6 +742,188 @@ mod tests {
 			GitSource::try_new("https://github.com/ramate-io/cite", "cite/http/tests/content/diffed-lines-1-3.md#L7-L10", "94dab273cf6c2abe8742d6d459ad45c96ca9b694", "2bcceb14934dbe0803ddb70bc8952a0c33f931e2", None)?;
 		let comparison_does_not_intersect = source_does_not_intersect.get()?;
 		assert!(!comparison_does_not_intersect.diff().has_changes());
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_with_branch_names() -> Result<(), anyhow::Error> {
+		// Test creating GitSource with branch names instead of commit hashes
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"README.md",
+			"main",  // Using branch name instead of commit hash
+			"main",  // Using branch name instead of commit hash
+			None
+		)?;
+
+		assert_eq!(source.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(source.path_pattern.path, "README.md");
+		assert_eq!(source.referenced_revision, "main");
+		assert_eq!(source.current_revision, "main");
+
+		// Test that we can get referenced content with branch names
+		let referenced_content = source.get_referenced()?;
+		assert_eq!(referenced_content.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(referenced_content.path_pattern.path, "README.md");
+		assert_eq!(referenced_content.revision, "main");
+
+		// Test that we can get current content with branch names
+		let current_content = source.get_current()?;
+		assert_eq!(current_content.remote, "https://github.com/ramate-io/cite");
+		assert_eq!(current_content.path_pattern.path, "README.md");
+		assert_eq!(current_content.revision, "main");
+
+		// Test that diff works with branch names
+		let _diff_result = current_content.diff(&referenced_content);
+		// Should not panic even if there are no changes
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_mixed_revisions() -> Result<(), anyhow::Error> {
+		// Test creating GitSource with mixed revision types (branch name vs commit hash)
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"README.md",
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",  // Commit hash
+			"main",  // Branch name
+			None
+		)?;
+
+		assert_eq!(source.referenced_revision, "94dab273cf6c2abe8742d6d459ad45c96ca9b694");
+		assert_eq!(source.current_revision, "main");
+
+		// Test that we can get both types of content
+		let referenced_content = source.get_referenced()?;
+		let current_content = source.get_current()?;
+
+		// Test that diff works with mixed revision types
+		let _diff_result = current_content.diff(&referenced_content);
+		// Should not panic
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_with_oac_repository() -> Result<(), anyhow::Error> {
+		// Test GitSource with the ramate-io/oac repository to debug empty repo issues
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/oac",
+			"README.md",
+			"main",  // Try main branch first
+			"main",
+			None
+		)?;
+
+		// Test that we can get referenced content
+		let referenced_content = source.get_referenced()?;
+		assert_eq!(referenced_content.remote, "https://github.com/ramate-io/oac");
+		assert_eq!(referenced_content.revision, "main");
+
+		// Test that we can get current content
+		let current_content = source.get_current()?;
+		assert_eq!(current_content.remote, "https://github.com/ramate-io/oac");
+		assert_eq!(current_content.revision, "main");
+
+		// Test that diff works
+		current_content.diff(&referenced_content)?;
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_git_source_with_oac_different_branches() -> Result<(), anyhow::Error> {
+		// Test GitSource with different branch names for oac repository
+		let branches_to_try = ["main", "master", "develop", "dev"];
+		
+		for branch in &branches_to_try {
+			let source = GitSource::try_new(
+				"https://github.com/ramate-io/oac",
+				"README.md",
+				branch,
+				branch,
+				None
+			)?;
+
+			// Try to get referenced content
+			if let Ok(content) = source.get_referenced() {
+				assert_eq!(content.revision, *branch);
+				
+				// Try to get current content
+				if let Ok(current) = source.get_current() {
+					assert_eq!(current.revision, *branch);
+					
+					// Try diff
+					if current.diff(&content).is_ok() {
+						break; // Found a working branch, we're done
+					}
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_directory_diffing() -> Result<(), anyhow::Error> {
+		// Test directory diffing functionality
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"cite/http/tests/content/",  // Directory path, include trailing slash
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+			"main",
+			None
+		)?;
+
+		let comparison = source.get()?;
+
+		assert!(comparison.diff().has_changes());
+
+		assert_eq!(comparison.diff().diff(), "Fdiff --git a/cite/http/tests/content/diffed-lines-1-3.md b/cite/http/tests/content/diffed-lines-1-3.md\nindex 0f800a0..9aeeae4 100644\n--- a/cite/http/tests/content/diffed-lines-1-3.md\n+++ b/cite/http/tests/content/diffed-lines-1-3.md\nH@@ -1,6 +1,6 @@\n-Alpha\n-Bravo\n-Charlie\n+Aaron\n+Bear\n+Cat\n Delta\n Echo\n Foxtrot\nFdiff --git a/cite/http/tests/content/diffed-lines-5-10.md b/cite/http/tests/content/diffed-lines-5-10.md\nindex 0f800a0..d45cf6b 100644\n--- a/cite/http/tests/content/diffed-lines-5-10.md\n+++ b/cite/http/tests/content/diffed-lines-5-10.md\nH@@ -2,9 +2,9 @@ Alpha\n Bravo\n Charlie\n Delta\n-Echo\n-Foxtrot\n-Gamma\n-Halifax\n-Istanbul\n-Juniper>\n\\ No newline at end of file\n+Epsom\n+Fox\n+Golf\n+Hotel\n+India\n+Juliet<\n\\ No newline at end of file\nFdiff --git a/cite/http/tests/content/to-delete.md b/cite/http/tests/content/to-delete.md\ndeleted file mode 100644\nindex 080a673..0000000\n--- a/cite/http/tests/content/to-delete.md\n+++ /dev/null\nH@@ -1 +0,0 @@\n-This file will soon be deleted.>\n\\ No newline at end of file\n");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_glob_pattern_diffing() -> Result<(), anyhow::Error> {
+		// Test glob pattern diffing functionality
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"cite/git/src/*.rs",  // Glob pattern for all .rs files
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+			"main",
+			None
+		)?;
+
+		let referenced_content = source.get_referenced()?;
+		let current_content = source.get_current()?;
+
+		// Test that diff works for glob pattern
+		let diff_result = current_content.diff(&referenced_content);
+		assert!(diff_result.is_ok(), "Glob pattern diff should work");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_recursive_glob_diffing() -> Result<(), anyhow::Error> {
+		// Test recursive glob pattern diffing functionality
+		let source = GitSource::try_new(
+			"https://github.com/ramate-io/cite",
+			"cite/git/src/**/*.rs",  // Recursive glob pattern
+			"94dab273cf6c2abe8742d6d459ad45c96ca9b694",
+			"main",
+			None
+		)?;
+
+		let referenced_content = source.get_referenced()?;
+		let current_content = source.get_current()?;
+
+		// Test that diff works for recursive glob pattern
+		let diff_result = current_content.diff(&referenced_content);
+		assert!(diff_result.is_ok(), "Recursive glob pattern diff should work");
 
 		Ok(())
 	}

@@ -1,0 +1,38 @@
+use super::builder::RepositoryBuilder;
+use crate::{util::with_retry, GitSourceError};
+
+/// Wraps up read operations, can only be constructed from the [RepositoryBuilder].
+#[derive(Debug, Clone)]
+pub struct RepositoryAnalyzer {
+	/// Semantically, this is a builder that has been built; it consume the builder.
+	builder: RepositoryBuilder,
+}
+
+impl RepositoryAnalyzer {
+	// all we need here are the methods to enable content diffs
+	// These should largely be refactored up from the content diff and into
+	// The [Respository] helper which is behind the guard.
+	// That way the concerns for mutability of operations are preserved.
+
+	pub fn get_content_diff_buffer(
+		&self,
+		referenced: &str,
+		current: &str,
+		path_pattern: &crate::PathPattern,
+	) -> Result<String, GitSourceError> {
+		with_retry(|| {
+			let repository_reader = self.builder.locked_repository().read()?;
+			// Call the repository method directly
+			repository_reader.get_content_diff_buffer(referenced, current, path_pattern)
+		})
+	}
+}
+
+impl RepositoryBuilder {
+	pub fn build(mut self) -> Result<RepositoryAnalyzer, GitSourceError> {
+		// do all of the fetching that's involved
+		self.fetch()?;
+
+		Ok(RepositoryAnalyzer { builder: self })
+	}
+}
