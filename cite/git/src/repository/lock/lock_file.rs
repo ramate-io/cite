@@ -30,7 +30,7 @@ impl LockFile {
 	/// This is optimistic - assumes the file already exists from a previous write operation.
 	pub(crate) fn read(&self) -> Result<FileLock, GitSourceError> {
 		// Read-only lock, no create - assumes file exists from previous write
-		let options = FileOptions::new().read(true);
+		let options = FileOptions::new().read(true).write(true); // DEBUG: file lock does not seemd to be working.
 
 		// lock is always blocking because this is for builds which don't have concurrency
 		FileLock::lock(self.path.clone(), true, options).map_err(GitSourceError::CreateLockFile)
